@@ -350,3 +350,42 @@ input[type=time] { background: var(--surface); border: 1px solid var(--line); bo
 .chk.typ .x { font-size: 18px; padding: 0 2px; }
 @media (max-width: 620px) { .item-row { grid-template-columns: minmax(0, 1fr) 64px auto; } .item-row input[id^="op-desc"], .item-row input[id^="op-val"] { grid-column: 1 / -1; } .item-row .x { grid-row: 1; grid-column: 3; } }
 .tbl td.co .st { margin-left: 6px; }
+
+/* ---- scoreboard ---- */
+:root { --s-call: var(--blue); --s-email: #eb6834; --s-text: #199e70; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --s-email: #d95926; } }
+:root[data-theme="dark"] { --s-email: #d95926; }
+.s-call { background: var(--s-call); } .s-email { background: var(--s-email); } .s-text { background: var(--s-text); }
+.sec-link { font-family: var(--body); font-size: 14px; letter-spacing: 0; text-transform: none; font-weight: 400; margin-left: 10px; }
+.hero { border-left: 4px solid var(--brand-red); flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 32px; padding: 18px 22px; }
+.hero-main { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.hero-n { font-family: var(--display); font-weight: 700; font-size: clamp(64px, 9vw, 96px); line-height: .9; font-variant-numeric: tabular-nums; }
+.hero-l { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; min-width: 0; }
+.hero-l strong { font-size: 18px; font-weight: 600; }
+.hero-tag { margin-top: 6px; }
+.facts { display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.fact.up { color: var(--good-ink); font-weight: 600; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.cols { display: flex; align-items: stretch; gap: 2px; height: 210px; padding-top: 22px; margin-bottom: 24px; border-bottom: 1px solid var(--line); }
+.col { flex: 1 1 0; min-width: 0; position: relative; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; outline-offset: 0; }
+.col:hover, .col:focus-visible { background: var(--line-2); }
+.col-stack { position: relative; width: 100%; max-width: 24px; min-height: 3px; display: flex; flex-direction: column; gap: 2px; }
+.col-stack i { display: block; flex: 1 1 0; min-height: 2px; }
+.col-stack i.top { border-radius: 4px 4px 0 0; }
+.col-n { position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.col-x { position: absolute; top: calc(100% + 5px); left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.col.now .col-x { color: var(--ink); font-weight: 600; }
+.col:hover::after, .col:focus-visible::after { content: attr(data-tip); position: absolute; z-index: 5; bottom: calc(100% - 14px); left: 50%; transform: translateX(-50%); white-space: pre; text-align: left; font-size: 13px; line-height: 1.4; background: var(--bar); color: var(--bar-ink); border: 1px solid var(--bar-line); border-radius: var(--r); padding: 6px 10px; box-shadow: var(--shadow); pointer-events: none; }
+.col.l:hover::after, .col.l:focus-visible::after { left: 0; transform: none; }
+.col.r:hover::after, .col.r:focus-visible::after { left: auto; right: 0; transform: none; }
+.board td.mix { width: 28%; min-width: 120px; }
+.mixbar { display: flex; gap: 2px; height: 12px; min-width: 0; }
+.mixbar i { display: block; flex: 1 1 0; min-width: 2px; }
+.mixbar i:last-child { border-radius: 0 4px 4px 0; }
+.tbl tr.sel-row td { background: var(--blue-soft); }
+.fine { font-size: 13px; max-width: 90ch; }
+.rp-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 900px) { .rp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) { .hero-main { flex-direction: column; align-items: flex-start; gap: 8px; } .cols { height: 170px; } }

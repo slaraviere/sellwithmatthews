@@ -361,6 +361,56 @@ await page.waitForSelector('.toast.err');
 check('AI failure stops the batch with a message', (await page.textContent('.toast.err')).includes('usage limit'));
 await st(page, `window.__aiFail = ''`);
 
+// --- scoreboard
+await page.click('#tabs [data-tab="report"]');
+await page.waitForSelector('#rp-total');
+const rp0 = await st(page, `(() => { const d = rpData({ range: 'week', rep: '' }); return { cur: d.cur, prev: d.prev, prevFull: d.prevFull, me: (d.reps.find(r => r.id === ME) || { total: 0 }).total, out: Object.fromEntries(d.outcomes) }; })()`);
+const rpPlan = await st(page, `(async () => {
+  const t = today(), at = (day, h) => new Date(parseYmd(day).getTime() + h * 36e5).toISOString();
+  const prevWorkday = d => { do { d = addDays(d, -1); } while ([0, 6].includes(parseYmd(d).getDay())); return d; };
+  const pw1 = prevWorkday(t), pw2 = prevWorkday(pw1);
+  await Store.cfgPatch('team', 'dana', { name: 'Dana', active: true });
+  for (const id of ['rpx', 'rpy', 'rpz']) await Store.add('co', { id, name: 'Scoreboard ' + id, status: 'New', priority: 'B', terr: UNASSIGNED, created: nowIso() });
+  const rows = [
+    ['rpx', 'Phone Call', addDays(t, -7), 9, ME, ''], ['rpx', 'Phone Call', addDays(t, -7), 10, ME, 'No answer'],
+    ['rpx', 'Phone Call', t, 9, ME, 'Connected'], ['rpx', 'Voicemail', t, 10, ME, ''], ['rpy', 'Email Sent', t, 11, ME, 'Sent'],
+    ['rpy', 'Phone Call', t, 8, 'dana', 'No answer'], ['rpy', 'Text Message', t, 12, 'dana', ''],
+    ['rpz', 'Email Sent', pw1, 9, 'dana', 'Sent'], ['rpz', 'Email Sent', pw2, 9, 'dana', 'Sent'],
+    ['rpx', 'Note', t, 13, ME, ''],
+  ];
+  for (const [co, type, day, h, by, outcome] of rows) await Store.add('ac', { id: uid(), co, type, at: at(day, h), by, outcome, notes: '', created: nowIso() });
+  const ws = weekStart(), weekday = ![0, 6].includes(parseYmd(t).getDay());
+  return { inWeek: [pw1, pw2].filter(d => d >= ws).length, streakMin: (weekday ? 1 : 0) + 2, pw2InWeek: pw2 >= ws };
+})()`);
+await page.waitForFunction(() => S.co.has('rpz') && [...S.ac.values()].filter(a => a.co === 'rpz').length === 2 && S.team.dana);
+await page.waitForTimeout(200);
+const rp1 = await st(page, `(() => { const d = rpData({ range: 'week', rep: '' }); return { cur: d.cur, prev: d.prev, prevFull: d.prevFull, streak: d.streak, me: d.reps.find(r => r.id === ME).total, dana: d.reps.find(r => r.id === 'dana'), danaOnly: rpData({ range: 'week', rep: 'dana' }).cur.total, out: Object.fromEntries(d.outcomes), cols: d.buckets.length, shown: document.querySelector('#rp-total').textContent, year: rpData({ range: 'year', rep: '' }).buckets.length, yearSum: rpData({ range: 'year', rep: '' }).buckets.reduce((n, b) => n + b.total, 0), yearTotal: rpData({ range: 'year', rep: '' }).cur.total }; })()`);
+const dlt = k => rp1.cur[k] - rp0.cur[k];
+check('scoreboard: calls, emails and texts counted for the week', dlt('call') === 3 && dlt('email') === 1 + rpPlan.inWeek && dlt('text') === 1 && dlt('total') === 5 + rpPlan.inWeek, { call: dlt('call'), email: dlt('email'), text: dlt('text'), total: dlt('total'), plan: rpPlan });
+check('scoreboard: notes are not outreach', rp1.cur.total === rp1.cur.call + rp1.cur.email + rp1.cur.text);
+check('scoreboard: conversations count calls that reached the person', dlt('convo') === 1, dlt('convo'));
+check('scoreboard: first-time contacts count only the first touch per company', dlt('first') === 1 + (rpPlan.pw2InWeek ? 1 : 0) && rp1.prev.first - rp0.prev.first >= 1, { cur: dlt('first'), prev: rp1.prev.first - rp0.prev.first });
+check('scoreboard: last week compared at the same point', rp1.prev.call - rp0.prev.call === 2 && rp1.prevFull - rp0.prevFull >= 2, { prev: rp1.prev.call - rp0.prev.call, full: rp1.prevFull - rp0.prevFull });
+check('scoreboard: leaderboard splits by who logged it', rp1.me - rp0.me === 3 && rp1.dana.total === 2 + rpPlan.inWeek && rp1.dana.call === 1 && rp1.dana.text === 1 && rp1.danaOnly === rp1.dana.total, { me: rp1.me - rp0.me, dana: rp1.dana });
+check('scoreboard: call outcomes tallied', (rp1.out['Connected'] || 0) - (rp0.out['Connected'] || 0) === 1 && (rp1.out['No answer'] || 0) - (rp0.out['No answer'] || 0) === 1 && (rp1.out['No outcome recorded'] || 0) - (rp0.out['No outcome recorded'] || 0) === 1, rp1.out);
+check('scoreboard: streak counts workdays in a row', rp1.streak >= rpPlan.streakMin, rp1.streak);
+check('scoreboard: big number matches and week has 7 columns', rp1.shown === String(rp1.cur.total) && rp1.cols === 7 && await page.locator('.cols .col').count() === 7, rp1.shown);
+check('scoreboard: year view has 12 months that add up', rp1.year === 12 && rp1.yearSum === rp1.yearTotal, { sum: rp1.yearSum, total: rp1.yearTotal });
+await page.screenshot({ path: path.join(OUT, 'shot-scoreboard.png'), fullPage: true });
+await page.click('.board [data-act="rp-rep"][data-id="dana"]');
+check('scoreboard: clicking a name shows just that person', await page.textContent('#rp-total') === String(rp1.danaOnly) && (await page.textContent('.hero-l strong')).includes('by Dana'));
+await page.click('[data-act="rp-rep"][data-id=""]');
+await page.click('[data-act="rp-range"][data-range="month"]');
+check('scoreboard: month view draws one column per day', await page.locator('.cols .col').count() === await st(page, `new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()`));
+await page.click('[data-act="rp-table"]');
+check('scoreboard: numbers table opens', await page.locator('#rp-table tbody tr').count() >= 1);
+await page.hover('.cols .col.now');
+await page.screenshot({ path: path.join(OUT, 'shot-scoreboard-month.png'), fullPage: true });
+await page.click('[data-act="rp-range"][data-range="week"]');
+await page.click('#tabs [data-tab="dashboard"]');
+await page.click('[data-act="tab"][data-tab="report"]');
+check('scoreboard: dashboard links to it', await page.locator('#rp-total').count() === 1);
+
 // --- state carried to phone + dark screenshots
 const dump = await st(page, `Object.fromEntries([...window.__docs.entries()])`);
 const phone = await newPage({ viewport: { width: 400, height: 800 }, dark: true, seed: dump });
@@ -378,6 +428,11 @@ await phone.screenshot({ path: path.join(OUT, 'shot-phone-detail.png'), fullPage
 await phone.click('.actions [data-act="log"][data-type="Phone Call"]');
 await phone.waitForSelector('#f-outcome');
 await phone.screenshot({ path: path.join(OUT, 'shot-phone-dialog.png') });
+await phone.keyboard.press('Escape');
+await phone.click('#tabs [data-tab="report"]');
+await phone.waitForSelector('#rp-total');
+check('phone: no horizontal page scroll (scoreboard)', await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), await phone.evaluate(() => document.documentElement.scrollWidth));
+await phone.screenshot({ path: path.join(OUT, 'shot-phone-scoreboard.png'), fullPage: true });
 const dark = await newPage({ dark: true, seed: dump });
 await dark.waitForSelector('.tiles');
 await dark.waitForTimeout(300);

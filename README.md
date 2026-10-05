@@ -63,6 +63,7 @@ small team's confirmations and resets; add custom SMTP in Supabase if it becomes
 | `src/import.js` | CSV / Excel import: column matching, match-before-create planning, apply |
 | `src/pipeline.js` | Lines of business (Equipment, Estate, Real Estate), opportunity items and types, the opportunity dialog and Opportunities screen |
 | `src/appointments.js` | Scheduling appointments (stored as tasks with a time, place and kind) |
+| `src/report.js` | Scoreboard: outreach counts, leaderboard, streaks and call outcomes, all computed from the activity log |
 | `src/outreach.js` | AI email drafting and the outreach queue |
 | `src/app.js` | Event wiring shared by both builds |
 | `src/store-web.js`, `src/boot-web.js` | Website build: Supabase storage, sign-in, account screen, backup restore |
