@@ -5,11 +5,15 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const r = f => readFileSync(new URL('./src/' + f, import.meta.url), 'utf8');
 const out = (p, text) => { mkdirSync(new URL(p.replace(/[^/]+$/, ''), import.meta.url), { recursive: true }); writeFileSync(new URL(p, import.meta.url), text); console.log('built', p, (text.length / 1024).toFixed(1) + ' KB'); };
-const js = files => { const s = files.map(r).join('\n'); if (s.includes('</script')) throw new Error('script close tag inside JS'); return s; };
+const js = files => { const s = files.map(r).join('\n'); if (s.includes('</script')) throw new Error('script close tag inside JS'); return brand(s); };
 
 const TITLE = 'Matthews Consignment CRM';
 const FONTS = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">';
-const css = r('style.css'), body = r('body.html');
+// The logo is the company's own artwork (src/assets), embedded so each build stays a single file.
+const img = f => 'data:image/png;base64,' + readFileSync(new URL('./src/assets/' + f, import.meta.url)).toString('base64');
+const LOGO = { '%%LOGO_MARK%%': img('logo-mark.png'), '%%LOGO_FULL%%': img('logo-stacked.png') };
+const brand = text => Object.entries(LOGO).reduce((t, [k, v]) => t.replaceAll(k, v), text);
+const css = r('style.css'), body = brand(r('body.html'));
 
 // --- Claude-hosted build: the publisher wraps this fragment in its own document skeleton.
 out('./dist/matthews-consignment-crm.html',
@@ -32,6 +36,7 @@ out('./public/index.html', `<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <title>${TITLE}</title>
+<link rel="icon" type="image/png" href="${img('favicon.png')}">
 ${FONTS}
 <style>${RESET}</style>
 <style>

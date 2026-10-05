@@ -6,7 +6,7 @@ let SB = null;
 const WEB = { screen: 'loading', mode: 'signin', msg: '', err: '', email: '', entered: false, askPassword: false, busy: false };
 
 function webGateHtml() {
-  const card = inner => `<div class="gate"><div class="gate-card">${inner}</div></div>`;
+  const card = inner => `<div class="gate"><div class="gate-card"><img class="gate-logo" src="%%LOGO_FULL%%" alt="Matthews Auctioneers. Consider it sold." width="220" height="189">${inner}</div></div>`;
   if (WEB.screen === 'unconfigured') return card(`<h2>This site isn't connected to its database yet</h2><p>Set <code>SUPABASE_URL</code> and <code>SUPABASE_ANON_KEY</code> in the Vercel project's environment variables, then redeploy.</p>`);
   if (WEB.screen === 'error') return card(`<h2>The CRM couldn't reach its database</h2><p>${esc(WEB.err || 'Check your connection and reload the page.')}</p><div class="row"><button type="button" class="btn primary" data-act="web-reload">Reload</button><button type="button" class="btn" data-act="web-signout">Sign out</button></div>`);
   if (WEB.screen === 'nomember') return card(`<h2>You're signed in, but not on the team yet</h2><p><b>${esc(WEB.email)}</b> hasn't been added to this CRM. Ask a CRM admin to add this email under Territories, then Team, and reload this page.</p><div class="row"><button type="button" class="btn primary" data-act="web-reload">Reload</button><button type="button" class="btn" data-act="web-signout">Sign out</button></div>`);
