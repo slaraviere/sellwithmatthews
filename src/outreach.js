@@ -4,7 +4,7 @@
    inbox, and marks it sent. The page itself never sends email.
    ============================================================ */
 const OUT_DEFAULT = {
-  about: 'Matthews Auctioneers sells equipment at online auction for contractors, fleets, farms and dealers: heavy and construction equipment, trucks, trailers, farm and forestry equipment, forklifts and attachments. Auctions run on MatthewsAuctioneers.com, EquipmentFacts.com and AuctionTime.com and reach buyers in all 50 states. Tagline: "Consider It Sold".',
+  about: 'Matthews Auctioneers sells equipment at online auction for contractors, fleets, farms and dealers: heavy and construction equipment, trucks, trailers, farm and forestry equipment, forklifts and attachments. Auctions run on MatthewsAuctioneers.com, EquipmentFacts.com and AuctionTime.com and reach buyers in all 50 states. Matthews also conducts estate auctions and real estate auctions. Tagline: "Consider It Sold".',
   footer: "If you'd rather not hear from us, reply and let me know and I won't contact you again.",
   gap: 4,
 };
@@ -67,10 +67,18 @@ function mySignature() {
   const me = ME && S.team[ME];
   return (me && me.sig) || ((me ? me.name + '\n' : '') + 'Matthews Auctioneers');
 }
+/* Attorneys, banks and agents are asked to keep Matthews in mind for their clients; they are not sellers themselves. */
+const REFERRAL_PURPOSES = {
+  intro: 'First email to a referral partner (an attorney, bank or trust officer, real estate agent, or similar). Introduce Matthews Auctioneers in one sentence and offer to be a resource when one of their clients needs to sell the contents of an estate or a property at auction. Ask for a short call or who in their office handles this.',
+  followup: 'Follow-up to earlier outreach to a referral partner that got no reply. Short, no guilt, and repeat the offer to help when a client needs an estate or property sold.',
+  voicemail: 'Sent right after leaving a voicemail for a referral partner. Say you just left a message and repeat in one sentence how you help their clients.',
+  checkin: 'A light check-in with a referral partner. Ask whether any clients have an estate or property coming up, and leave the door open.',
+};
+const purposeText = (c, purpose) => (isReferral(c) && REFERRAL_PURPOSES[purpose]) || PURPOSES[purpose][1];
 function prospectData(c, ct, purpose) {
   const acts = (derive().actByCo.get(c.id) || []).slice(0, 5).map(a => ({ date: isoToYmd(a.at), type: a.type, outcome: a.outcome || undefined, notes: a.notes ? cap(a.notes, 220) : undefined }));
   return {
-    id: c.id, purpose: PURPOSES[purpose][1],
+    id: c.id, purpose: purposeText(c, purpose), lines_of_business: coLines(c), is_referral_partner: isReferral(c) || undefined,
     company: c.name, location: clean((c.city || '') + (c.state ? ', ' + c.state : '')) || undefined,
     industry: [c.industry, c.subIndustry].filter(Boolean).join(' / ') || undefined,
     equipment_they_may_have: (c.assets || []).length ? c.assets : undefined,
@@ -85,7 +93,8 @@ const DRAFT_RULES = `Rules for every email:
 - Open with "Hi <first name>," or "Hello," when there is no first name.
 - Give one specific reason this company might have equipment to sell, drawn from its industry or the equipment it may have. Never invent facts about the prospect, such as fleet size, machines they own, or past conversations that are not in the data.
 - Do not state commission rates, fees, valuations, sale prices, guarantees or auction dates unless they appear in the company facts or the rep instructions.
-- Make one clear, low-effort ask: a short call, or the name of the right person for surplus equipment.
+- Make one clear, low-effort ask: a short call, or the name of the right person.
+- When the prospect is a referral partner, write to them as a professional peer about how you help their clients. Never write as if the reader has suffered a loss, and never mention a specific family or death.
 - Sound like a person who works in equipment, not like marketing copy. No "I hope this email finds you well", no "reaching out", no "touch base".
 - End the body with the signature exactly as given. If a footer line is given, put it last, after a blank line.
 - Subject line: under 60 characters, specific, no clickbait, no ALL CAPS.

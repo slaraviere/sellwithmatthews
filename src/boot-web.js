@@ -130,7 +130,7 @@ async function webEnter(session) {
     CAP.downloads = webDownloads; CAP.sample = makeWebSample();
     V.tk.rep = ME; V.out.rep = ME;
     Store.onChange = local => schedule(0, !!local);
-    Store.onBehind = () => toast('Saved, but appointment times and places can\'t be stored until the database gets its update. Ask your CRM admin to run the latest database update.', { error: true });
+    Store.onBehind = () => toast('Saved, but some newer details (appointment times, opportunity items, lines of business) can\'t be stored until the database gets its update. Ask your CRM admin to run the latest database update.', { error: true });
     await Store.init(SB);
     CAP.db = SB;
     document.body.classList.remove('anon');

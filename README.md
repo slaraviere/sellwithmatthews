@@ -61,6 +61,7 @@ small team's confirmations and resets; add custom SMTP in Supabase if it becomes
 | `src/core.js` | Option lists, helpers, shared in-memory state, territory matching, derived data, CSV |
 | `src/ui.js` | App state, rendering, dialogs, every screen except import and outreach, exports |
 | `src/import.js` | CSV / Excel import: column matching, match-before-create planning, apply |
+| `src/pipeline.js` | Lines of business (Equipment, Estate, Real Estate), opportunity items and types, the opportunity dialog and Opportunities screen |
 | `src/appointments.js` | Scheduling appointments (stored as tasks with a time, place and kind) |
 | `src/outreach.js` | AI email drafting and the outreach queue |
 | `src/app.js` | Event wiring shared by both builds |

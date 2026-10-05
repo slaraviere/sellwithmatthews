@@ -23,10 +23,10 @@ const ACTIONS = {
   'more': t => { V[t.dataset.scope].limit += 100; renderNow(); },
   'go-view': t => { V.co = Object.assign({}, CO_FILTER0, V.tab === 'dashboard' ? V.dash : {}, { view: t.dataset.view }); if (['fu-today', 'fu-over', 'followup'].includes(t.dataset.view)) { V.co.sort = 'nextFU'; } go('companies'); },
   'go-tasks': t => { V.tk.tab = t.dataset.tk; V.tk.rep = V.dash.rep; go('tasks'); },
-  'go-opps': () => { V.op = { stage: 'open', terr: V.dash.terr, rep: V.dash.rep === 'none' ? '' : V.dash.rep, q: '' }; go('opportunities'); },
+  'go-opps': () => { V.op = { stage: 'open', line: V.dash.line, type: '', terr: V.dash.terr, rep: V.dash.rep === 'none' ? '' : V.dash.rep, q: '' }; go('opportunities'); },
   'go-acts': t => { V.ac = { type: t.dataset.type, rep: V.dash.rep === 'none' ? '' : V.dash.rep, range: 'week', limit: 100 }; go('activity'); },
   'dash-me': () => { V.dash.rep = V.dash.rep === ME ? '' : ME; renderNow(); },
-  'dash-clear': () => { V.dash = { terr: '', rep: '', industry: '', asset: '', priority: '', status: '' }; renderNow(); },
+  'dash-clear': () => { V.dash = { line: '', terr: '', rep: '', industry: '', asset: '', priority: '', status: '' }; renderNow(); },
   'tk-me': () => { V.tk.rep = V.tk.rep === ME ? '' : ME; renderNow(); },
   'tk-tab': t => { V.tk.tab = t.dataset.tk; renderNow(); },
   'log': t => openActivity(t.dataset.id, t.dataset.type, null, t.dataset.ct || ''),
@@ -170,6 +170,7 @@ function wire() {
     if (t.id === 'gsearch') return runSearch(t.value);
     if (t.dataset && t.dataset.input && INPUTS[t.dataset.input]) INPUTS[t.dataset.input](t, e);
     if (t.id === 'f-apptKind') apptKindChanged();
+    if (t.id === 'f-line' && _op) return opLineChanged();
     if (t.id === 'f-stage') { const p = $('#f-prob'); if (p && STAGE_PROB[t.value] != null) p.value = STAGE_PROB[t.value]; }
   });
   document.addEventListener('submit', e => {
@@ -192,5 +193,6 @@ function startShell() {
   const h = (location.hash || '').slice(1);
   if (TABS.some(t => t[0] === h)) V.tab = h;
   wire();
+  wirePipeline();
   render();
 }

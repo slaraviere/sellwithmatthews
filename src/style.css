@@ -338,3 +338,15 @@ input[type=password] { background: var(--surface); border: 1px solid var(--line)
 .flag.appt { background: var(--blue-soft); color: var(--blue-soft-ink); cursor: pointer; }
 input[type=time] { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 10px; max-width: 100%; min-width: 0; }
 .rows-meta a.btn { text-decoration: none; color: var(--ink); }
+
+/* ---- opportunity items ---- */
+.items legend { font-size: 13px; font-weight: 600; color: var(--ink-2); padding: 0; margin-bottom: 4px; }
+#op-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.item-row { display: grid; grid-template-columns: minmax(150px, 1.2fr) 70px minmax(0, 2fr) 120px auto; gap: 6px; align-items: center; }
+.item-row.adding { grid-template-columns: minmax(0, 1fr) auto auto; }
+.item-row select, .item-row input { width: 100%; min-width: 0; }
+.item-row .x { font-size: 22px; }
+.chk.typ { align-items: center; gap: 6px; }
+.chk.typ .x { font-size: 18px; padding: 0 2px; }
+@media (max-width: 620px) { .item-row { grid-template-columns: minmax(0, 1fr) 64px auto; } .item-row input[id^="op-desc"], .item-row input[id^="op-val"] { grid-column: 1 / -1; } .item-row .x { grid-row: 1; grid-column: 3; } }
+.tbl td.co .st { margin-left: 6px; }

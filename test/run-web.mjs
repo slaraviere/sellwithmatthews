@@ -138,12 +138,25 @@ await queue(() => db.exec(readFileSync(path.join(ROOT, 'supabase', 'migrations',
 await st(page, `document.querySelectorAll('.toast').forEach(t => t.remove())`);
 
 await st(page, `openOpp(null, [...S.co.values()][0].id)`);
-await page.fill('#f-units', '2'); await page.fill('#f-value', '85000.50'); await page.selectOption('#f-stage', 'Equipment Confirmed'); await page.fill('#f-auctionDate', '2026-11-14');
+await page.selectOption('#op-type-0', 'Excavator'); await page.fill('#op-qty-0', '2'); await page.fill('#op-val-0', '85000.50');
+await page.click('[data-act="op-item-add"]'); await page.selectOption('#op-type-1', 'Building Materials'); await page.fill('#op-desc-1', 'Trusses, one load');
+await page.selectOption('#f-stage', 'Equipment Confirmed'); await page.fill('#f-auctionDate', '2026-11-14');
 await page.click('#dlg-submit');
 await page.waitForFunction(() => S.op.size === 1);
 await st(page, `Store._chain`);
 const op = await one(`select *, auction_date::text as ad from opportunities`);
-check('opportunity row: integer, numeric and date columns', op.estimated_units === 2 && Number(op.estimated_value) === 85000.5 && op.probability === 35 && op.ad === '2026-11-14' && op.expected_close_date === null, { v: op.estimated_value });
+check('opportunity row: items, line and details columns', op.line === 'Equipment' && Array.isArray(op.items) && op.items.length === 2 && op.items[0].type === 'Excavator' && op.items[0].qty === 2 && op.items[1].desc === 'Trusses, one load' && JSON.stringify(op.details) === '{}' && op.referred_by_id === null, op.items);
+const pv = await admin(`select item_type, units::int as units, estimated_value::float as v from pipeline_items order by item_type`);
+check('pipeline_items view counts the same thing in SQL', pv.length === 2 && pv[0].item_type === 'Building Materials' && pv[0].units === 1 && pv[1].item_type === 'Excavator' && pv[1].units === 2 && pv[1].v === 85000.5, pv);
+check('opportunity row: integer, numeric and date columns', op.estimated_units === 3 && Number(op.estimated_value) === 85000.5 && op.probability === 35 && op.ad === '2026-11-14' && op.expected_close_date === null, { v: op.estimated_value });
+
+// --- estate line: company lines, details, referred-by and a custom item type
+await st(page, `Store.add('co', { id: 'rlaw00001', name: 'Hale & Finch Law', city: 'Radford', state: 'VA', terr: 'NRV', terrHow: 'City', industry: 'Attorney / Law Firm', lines: ['Estate', 'Real Estate'], status: 'New', assets: [], attemptsBase: 0, created: nowIso(), updated: nowIso() })`);
+await st(page, `addItemType('Rock Truck', 'Equipment')`);
+await st(page, `Store.add('op', { id: 'rest00001', name: 'Carter estate', line: 'Estate', co: 'rlaw00001', ref: 'rlaw00001', stage: 'Walk-Through Scheduled', prob: 25, items: [{ type: 'Firearms', qty: 12 }, { type: 'Household Contents', qty: 1 }], units: 13, value: null, details: { owner: 'Ruth Carter', authority: 'Executor', hasRE: true }, created: nowIso(), updated: nowIso() })`);
+const lawRow = await one(`select lines from companies where id = 'rlaw00001'`), estRow = await one(`select * from opportunities where id = 'rest00001'`), typesRow = await one(`select value from settings where key = 'outreach'`);
+check('estate rows: lines array, details, referred-by link, custom type saved', JSON.stringify(lawRow.lines) === '["Estate","Real Estate"]' && estRow.line === 'Estate' && estRow.details.owner === 'Ruth Carter' && estRow.details.hasRE === true && estRow.referred_by_id === 'rlaw00001' && estRow.items.length === 2 && typesRow.value.types.list[0].name === 'Rock Truck', { lines: lawRow.lines, details: estRow.details });
+await st(page, `Promise.all([Store.remove('op', 'rest00001')]).then(() => Store.remove('co', 'rlaw00001'))`);
 
 // --- import (bulk insert, a matched update, a new name-only rep)
 await page.click('#tabs [data-tab="import"]');
@@ -241,7 +254,7 @@ await page2.waitForFunction(() => typeof S !== 'undefined' && S.ready, null, { t
 const after = JSON.parse(await st(page2, snap()));
 const norm = o => JSON.parse(JSON.stringify(o, (k, v) => (k === 'created' || k === 'updated' || k === 'at' || k === 'statusAt') && typeof v === 'string' ? v.slice(0, 19) : v));
 const diff = [];
-for (const k of ['co', 'ct', 'ac', 'dr']) { const a = norm(before[k]), b = norm(after[k]); if (a.length !== b.length) diff.push(k + ' count ' + a.length + ' vs ' + b.length); a.forEach((r, i) => { for (const f of new Set([...Object.keys(r), ...Object.keys(b[i] || {})])) { const x = r[f], y = (b[i] || {})[f]; if (JSON.stringify(x == null || x === false ? '' : x) !== JSON.stringify(y == null || y === false ? '' : y)) diff.push(k + '.' + f + ': ' + JSON.stringify(x) + ' vs ' + JSON.stringify(y)); } }); }
+for (const k of ['co', 'ct', 'ac', 'dr']) { const a = norm(before[k]), b = norm(after[k]); if (a.length !== b.length) diff.push(k + ' count ' + a.length + ' vs ' + b.length); a.forEach((r, i) => { for (const f of new Set([...Object.keys(r), ...Object.keys(b[i] || {})])) { const x = r[f], y = (b[i] || {})[f]; const nz = v => (v == null || v === false || (Array.isArray(v) && !v.length)) ? '' : v; if (JSON.stringify(nz(x)) !== JSON.stringify(nz(y))) diff.push(k + '.' + f + ': ' + JSON.stringify(x) + ' vs ' + JSON.stringify(y)); } }); }
 check('reload returns the same records the screens were showing', diff.length === 0 && after.co.length === 4 && Object.keys(after.terr).length === 7 && after.out.main.gap === 5, diff.slice(0, 6));
 await page2.screenshot({ path: path.join(OUT, 'web-dashboard.png'), fullPage: true });
 

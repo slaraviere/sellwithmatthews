@@ -15,7 +15,7 @@ const TABLES = {
     source: ['lead_source', 'text'], leadType: ['lead_type', 'text'], priority: ['prospect_priority', 'text'], status: ['lead_status', 'text'], statusAt: ['lead_status_at', 'ts'],
     assets: ['asset_potential', 'arr'], rep: ['assigned_rep_id', 'ref'], lastContactBase: ['last_contact_base', 'date'], nextFU: ['next_follow_up', 'date'],
     lastMethodBase: ['last_contact_method_base', 'text'], attemptsBase: ['outreach_attempts_base', 'int0'], optOut: ['email_opt_out', 'bool'], dnc: ['do_not_call', 'bool'],
-    notes: ['notes', 'text'], srcUrl: ['source_url', 'text'], dupOk: ['duplicate_ok_signature', 'text'], created: ['created_at', 'tsd'], updated: ['updated_at', 'tsd'] } },
+    notes: ['notes', 'text'], srcUrl: ['source_url', 'text'], dupOk: ['duplicate_ok_signature', 'text'], created: ['created_at', 'tsd'], updated: ['updated_at', 'tsd'], lines: ['lines', 'arr'] } },
   ct: { table: 'contacts', cols: {
     co: ['company_id', 'ref'], first: ['first_name', 'text'], last: ['last_name', 'text'], title: ['job_title', 'text'], dept: ['department', 'text'], email: ['email', 'text'],
     phone: ['phone', 'text'], mobile: ['mobile_phone', 'text'], role: ['contact_role', 'text'], primary: ['is_primary', 'bool'], optOut: ['email_opt_out', 'bool'], dnc: ['do_not_call', 'bool'],
@@ -30,7 +30,8 @@ const TABLES = {
   op: { table: 'opportunities', cols: {
     name: ['name', 'text'], co: ['company_id', 'ref'], ct: ['contact_id', 'ref'], rep: ['assigned_rep_id', 'ref'], category: ['equipment_category', 'text'], desc: ['equipment_description', 'text'],
     units: ['estimated_units', 'int'], value: ['estimated_value', 'num'], auctionDate: ['auction_date', 'date'], commission: ['commission_structure', 'text'], location: ['equipment_location', 'text'],
-    stage: ['stage', 'text'], prob: ['probability', 'int'], closeDate: ['expected_close_date', 'date'], notes: ['notes', 'text'], created: ['created_at', 'tsd'], updated: ['updated_at', 'tsd'] } },
+    stage: ['stage', 'text'], prob: ['probability', 'int'], closeDate: ['expected_close_date', 'date'], notes: ['notes', 'text'], created: ['created_at', 'tsd'], updated: ['updated_at', 'tsd'],
+    line: ['line', 'line'], items: ['items', 'jsonarr'], details: ['details', 'jsonobj'], ref: ['referred_by_id', 'ref'] } },
   dr: { table: 'email_drafts', cols: {
     co: ['company_id', 'ref'], ct: ['contact_id', 'ref'], to: ['to_email', 'text'], purpose: ['purpose', 'text'], subject: ['subject', 'text'], body: ['body', 'text'], extra: ['instructions', 'text'],
     by: ['drafted_by_id', 'ref'], gmailAt: ['gmail_at', 'ts'], gmailUrl: ['gmail_url', 'text'], created: ['created_at', 'tsd'] } },
@@ -39,7 +40,7 @@ const TERR_COLS = { name: ['name', 'text'], state: ['state', 'text'], owner: ['o
 const TEAM_COLS = { name: ['name', 'text'], email: ['email', 'ref'], active: ['active', 'bool'], admin: ['is_admin', 'bool'], sig: ['signature', 'text'] };
 /* Columns added after the first database setup. If the database has not had its update yet,
    writes are retried without them so the rest of the record still saves. */
-const LATER_COLS = { tasks: ['due_time', 'location', 'appointment_kind'] };
+const LATER_COLS = { tasks: ['due_time', 'location', 'appointment_kind'], companies: ['lines'], opportunities: ['line', 'items', 'details', 'referred_by_id'] };
 const KIND_BY_TABLE = {};
 for (const k in TABLES) KIND_BY_TABLE[TABLES[k].table] = k;
 
@@ -53,6 +54,9 @@ function toDb(type, v) {
     case 'num': { if (v == null || v === '') return null; const n = Number(v); return isFinite(n) ? n : null; }
     case 'bool': return !!v;
     case 'arr': return Array.isArray(v) ? v.map(String) : [];
+    case 'line': return v ? String(v) : 'Equipment';
+    case 'jsonarr': return Array.isArray(v) ? v : [];
+    case 'jsonobj': return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   }
   return v;
 }
@@ -65,6 +69,9 @@ function fromDb(type, v) {
     case 'int0': return Number(v) || 0;
     case 'bool': return !!v;
     case 'arr': return Array.isArray(v) ? v : (typeof v === 'string' ? parsePgArray(v) : []);
+    case 'line': return v ? String(v) : 'Equipment';
+    case 'jsonarr': { if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = []; } } return Array.isArray(v) ? v : []; }
+    case 'jsonobj': { if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = {}; } } return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
   }
   return v;
 }
