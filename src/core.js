@@ -3,7 +3,7 @@
    Matthews Consignment CRM — options, helpers, storage, territory matching
    ============================================================ */
 
-const INDUSTRIES = ['Excavation', 'Site Development', 'Grading', 'Heavy Civil Construction', 'General Construction', 'Paving', 'Utilities', 'Demolition', 'Trucking', 'Freight', 'Warehousing', 'Distribution', 'Logistics', 'Manufacturing', 'Agriculture', 'Forestry', 'Municipal / Government', 'Rental', 'Fleet Services', 'Truck Leasing', 'Industrial', 'Other'];
+const INDUSTRIES = ['Excavation', 'Site Development', 'Grading', 'Heavy Civil Construction', 'General Construction', 'Paving', 'Utilities', 'Demolition', 'Trucking', 'Freight', 'Warehousing', 'Distribution', 'Logistics', 'Manufacturing', 'Agriculture', 'Forestry', 'Municipal / Government', 'Rental', 'Fleet Services', 'Truck Leasing', 'Industrial', 'Attorney / Law Firm', 'Bank / Trust', 'Real Estate Agent / Broker', 'CPA / Financial Advisor', 'Funeral Home', 'Senior Living / Move Management', 'Individual / Family', 'Estate', 'Other'];
 const CONSTRUCTION = ['Excavation', 'Site Development', 'Grading', 'Heavy Civil Construction', 'General Construction', 'Paving', 'Utilities'];
 const PRIORITIES = ['A+', 'A', 'B+', 'B', 'C', 'Unqualified'];
 const PRIORITY_HELP = { 'A+': 'Exceptional prospect / highly equipment intensive', 'A': 'Strong prospect', 'B+': 'Good prospect', 'B': 'Worth qualifying', 'C': 'Low priority', 'Unqualified': 'Unqualified' };
@@ -11,7 +11,7 @@ const STATUSES = ['New', 'Researching', 'Ready for Outreach', 'Email Sent', 'Cal
 const STATUS_GROUP = { 'New': 'early', 'Researching': 'early', 'Ready for Outreach': 'early', 'Email Sent': 'out', 'Called': 'out', 'Voicemail Left': 'out', 'Contacted': 'out', 'Correct Contact Found': 'out', 'Follow-Up Needed': 'warn', 'Interested': 'hot', 'Has Equipment': 'hot', 'Consignment Opportunity': 'hot', 'Consignor': 'won', 'Future Opportunity / Nurture': 'warn', 'Not Interested': 'dead', 'Do Not Contact': 'stop' };
 const EARLY_STATUSES = ['New', 'Researching', 'Ready for Outreach', 'Email Sent', 'Called', 'Voicemail Left'];
 const DEAD_STATUSES = ['Not Interested', 'Do Not Contact'];
-const ASSETS = ['Heavy Equipment', 'Construction Equipment', 'Trucks', 'Trailers', 'Fleet Vehicles', 'Farm Equipment', 'Forklifts / Material Handling', 'Industrial Equipment', 'Forestry Equipment', 'Paving Equipment', 'Shop Equipment', 'Attachments', 'Other'];
+const ASSETS = ['Heavy Equipment', 'Construction Equipment', 'Trucks', 'Trailers', 'Fleet Vehicles', 'Farm Equipment', 'Forklifts / Material Handling', 'Industrial Equipment', 'Forestry Equipment', 'Paving Equipment', 'Shop Equipment', 'Attachments', 'Building Materials', 'Estate Contents', 'Real Estate', 'Other'];
 const ROLES = ['Owner', 'President', 'Fleet Manager', 'Equipment Manager', 'Operations Manager', 'Surplus Asset Manager', 'Asset Disposal', 'Purchasing', 'Procurement', 'Transportation Manager', 'Terminal Manager', 'Shop Manager', 'Warehouse Manager', 'General Manager', 'Office Manager', 'Other'];
 const ACT_TYPES = ['Email Sent', 'Email Received', 'Phone Call', 'Voicemail', 'Text Message', 'Meeting', 'Site Visit', 'Note', 'Follow-Up', 'Equipment Discussion', 'Consignment Discussion'];
 /* What logging each activity type does to the company record. */
@@ -29,7 +29,7 @@ const ACT_META = {
   'Consignment Discussion': { method: 'Conversation', contact: true },
 };
 const OUTCOMES = ['Connected', 'No answer', 'Left voicemail', 'Sent', 'Replied', 'Gatekeeper', 'Wrong contact', 'Correct contact found', 'Call back later', 'Interested', 'Has equipment', 'Not interested'];
-const TASK_TYPES = ['Call', 'Email', 'Follow-Up', 'Research', 'Site Visit', 'Equipment Review', 'Consignment Follow-Up'];
+const TASK_TYPES = ['Call', 'Email', 'Follow-Up', 'Research', 'Site Visit', 'Equipment Review', 'Consignment Follow-Up', 'Appointment'];
 const TASK_STATUS = ['Open', 'Completed', 'Snoozed', 'Cancelled'];
 const TASK_PRI = ['High', 'Normal', 'Low'];
 const STAGES = ['Identified', 'Initial Discussion', 'Equipment Confirmed', 'Photos / Details Requested', 'Valuation / Review', 'Terms Discussed', 'Consignment Agreed', 'Scheduled for Auction', 'Sold', 'No Sale', 'Lost', 'Future Opportunity'];

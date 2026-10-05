@@ -21,6 +21,7 @@ const IMPORT_FIELDS = [
   ['co.assets', 'Asset Potential', ['asset potential', 'assets', 'equipment', 'equipment types', 'equipment type', 'asset types', 'asset type']],
   ['co.rep', 'Assigned Rep', ['assigned rep', 'rep', 'assigned to', 'sales rep', 'account owner']],
   ['co.terr', 'Territory Code', ['territory', 'territory code']],
+  ['co.lines', 'Line of Business', ['line of business', 'lines of business', 'line', 'business line', 'division']],
   ['co.lastContactBase', 'Last Contact Date', ['last contact', 'last contact date', 'last contacted']],
   ['co.nextFU', 'Next Follow-Up Date', ['next follow up', 'next follow up date', 'follow up date', 'next followup', 'follow up']],
   ['co.lastMethodBase', 'Last Contact Method', ['last contact method', 'contact method']],
@@ -132,6 +133,7 @@ function planImport(rows, map, opts) {
     if (r.priority) { const p = normPriority(r.priority); if (p) co.priority = p; }
     if (r.status) { const s = ciFind(STATUSES, r.status); if (s) co.status = s; }
     if (r.assets) co.assets = normAssets(r.assets);
+    if (r.lines) { const l = r.lines.toLowerCase(), rest = l.replace(/real\s*estate/g, ''); const got = LINES.filter(x => x === 'Real Estate' ? /real\s*estate/.test(l) : x === 'Estate' ? rest.includes('estate') : rest.includes('equip')); if (got.length) co.lines = got; }
     if (r.rep) {
       const key = r.rep.toLowerCase();
       let rid = repByName.get(key);
@@ -183,6 +185,7 @@ function planImport(rows, map, opts) {
           else if (opts.overwrite && String(cur[k]) !== String(co[k])) patch[k] = co[k];
         }
         if (co.assets && co.assets.length) { const u = ASSETS.filter(a => (cur.assets || []).includes(a) || co.assets.includes(a)); if (u.length !== (cur.assets || []).length) patch.assets = u; }
+        if (co.lines) { const u = LINES.filter(x => coLines(cur).includes(x) || co.lines.includes(x)); if (u.join() !== coLines(cur).join()) patch.lines = u; }
         if (co.notes && !(cur.notes || '').includes(co.notes)) patch.notes = cap(cur.notes ? cur.notes + '\n\n' + co.notes : co.notes, 8000);
         if (co.optOut && !cur.optOut) patch.optOut = true;
         if (co.dnc && !cur.dnc) patch.dnc = true;

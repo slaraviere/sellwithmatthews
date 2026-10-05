@@ -15,7 +15,7 @@ const TABLES = {
     source: ['lead_source', 'text'], leadType: ['lead_type', 'text'], priority: ['prospect_priority', 'text'], status: ['lead_status', 'text'], statusAt: ['lead_status_at', 'ts'],
     assets: ['asset_potential', 'arr'], rep: ['assigned_rep_id', 'ref'], lastContactBase: ['last_contact_base', 'date'], nextFU: ['next_follow_up', 'date'],
     lastMethodBase: ['last_contact_method_base', 'text'], attemptsBase: ['outreach_attempts_base', 'int0'], optOut: ['email_opt_out', 'bool'], dnc: ['do_not_call', 'bool'],
-    notes: ['notes', 'text'], srcUrl: ['source_url', 'text'], dupOk: ['duplicate_ok_signature', 'text'], created: ['created_at', 'tsd'], updated: ['updated_at', 'tsd'] } },
+    notes: ['notes', 'text'], srcUrl: ['source_url', 'text'], dupOk: ['duplicate_ok_signature', 'text'], created: ['created_at', 'tsd'], updated: ['updated_at', 'tsd'], lines: ['lines', 'arr'] } },
   ct: { table: 'contacts', cols: {
     co: ['company_id', 'ref'], first: ['first_name', 'text'], last: ['last_name', 'text'], title: ['job_title', 'text'], dept: ['department', 'text'], email: ['email', 'text'],
     phone: ['phone', 'text'], mobile: ['mobile_phone', 'text'], role: ['contact_role', 'text'], primary: ['is_primary', 'bool'], optOut: ['email_opt_out', 'bool'], dnc: ['do_not_call', 'bool'],
@@ -25,17 +25,22 @@ const TABLES = {
     notes: ['notes', 'text'], nextFU: ['next_follow_up', 'date'], created: ['created_at', 'tsd'] } },
   tk: { table: 'tasks', cols: {
     name: ['name', 'text'], co: ['company_id', 'ref'], ct: ['contact_id', 'ref'], rep: ['assigned_to_id', 'ref'], due: ['due_date', 'date'], type: ['task_type', 'text'],
-    priority: ['priority', 'text'], status: ['status', 'text'], notes: ['notes', 'text'], auto: ['auto_source', 'text'], doneAt: ['completed_at', 'ts'], created: ['created_at', 'tsd'] } },
+    priority: ['priority', 'text'], status: ['status', 'text'], notes: ['notes', 'text'], auto: ['auto_source', 'text'], doneAt: ['completed_at', 'ts'], created: ['created_at', 'tsd'],
+    time: ['due_time', 'text'], location: ['location', 'text'], apptKind: ['appointment_kind', 'text'] } },
   op: { table: 'opportunities', cols: {
     name: ['name', 'text'], co: ['company_id', 'ref'], ct: ['contact_id', 'ref'], rep: ['assigned_rep_id', 'ref'], category: ['equipment_category', 'text'], desc: ['equipment_description', 'text'],
     units: ['estimated_units', 'int'], value: ['estimated_value', 'num'], auctionDate: ['auction_date', 'date'], commission: ['commission_structure', 'text'], location: ['equipment_location', 'text'],
-    stage: ['stage', 'text'], prob: ['probability', 'int'], closeDate: ['expected_close_date', 'date'], notes: ['notes', 'text'], created: ['created_at', 'tsd'], updated: ['updated_at', 'tsd'] } },
+    stage: ['stage', 'text'], prob: ['probability', 'int'], closeDate: ['expected_close_date', 'date'], notes: ['notes', 'text'], created: ['created_at', 'tsd'], updated: ['updated_at', 'tsd'],
+    line: ['line', 'line'], items: ['items', 'jsonarr'], details: ['details', 'jsonobj'], ref: ['referred_by_id', 'ref'] } },
   dr: { table: 'email_drafts', cols: {
     co: ['company_id', 'ref'], ct: ['contact_id', 'ref'], to: ['to_email', 'text'], purpose: ['purpose', 'text'], subject: ['subject', 'text'], body: ['body', 'text'], extra: ['instructions', 'text'],
     by: ['drafted_by_id', 'ref'], gmailAt: ['gmail_at', 'ts'], gmailUrl: ['gmail_url', 'text'], created: ['created_at', 'tsd'] } },
 };
 const TERR_COLS = { name: ['name', 'text'], state: ['state', 'text'], owner: ['owner_id', 'ref'], active: ['active', 'bool'], notes: ['notes', 'text'], cities: ['cities', 'arr'], counties: ['counties', 'arr'], zips: ['zips', 'arr'] };
 const TEAM_COLS = { name: ['name', 'text'], email: ['email', 'ref'], active: ['active', 'bool'], admin: ['is_admin', 'bool'], sig: ['signature', 'text'] };
+/* Columns added after the first database setup. If the database has not had its update yet,
+   writes are retried without them so the rest of the record still saves. */
+const LATER_COLS = { tasks: ['due_time', 'location', 'appointment_kind'], companies: ['lines'], opportunities: ['line', 'items', 'details', 'referred_by_id'] };
 const KIND_BY_TABLE = {};
 for (const k in TABLES) KIND_BY_TABLE[TABLES[k].table] = k;
 
@@ -49,6 +54,9 @@ function toDb(type, v) {
     case 'num': { if (v == null || v === '') return null; const n = Number(v); return isFinite(n) ? n : null; }
     case 'bool': return !!v;
     case 'arr': return Array.isArray(v) ? v.map(String) : [];
+    case 'line': return v ? String(v) : 'Equipment';
+    case 'jsonarr': return Array.isArray(v) ? v : [];
+    case 'jsonobj': return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
   }
   return v;
 }
@@ -61,6 +69,9 @@ function fromDb(type, v) {
     case 'int0': return Number(v) || 0;
     case 'bool': return !!v;
     case 'arr': return Array.isArray(v) ? v : (typeof v === 'string' ? parsePgArray(v) : []);
+    case 'line': return v ? String(v) : 'Equipment';
+    case 'jsonarr': { if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = []; } } return Array.isArray(v) ? v : []; }
+    case 'jsonobj': { if (typeof v === 'string') { try { v = JSON.parse(v); } catch (e) { v = {}; } } return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; }
   }
   return v;
 }
@@ -176,6 +187,21 @@ const Store = {
     return res ? res.data : null;
   },
 
+  /* Sends rows; if the database is missing a later-added column, sends them again without it. */
+  async _send(t, rows, make) {
+    try { return await this._exec(make(rows)); }
+    catch (e) {
+      if (!LATER_COLS[t] || !(e.pg === 'PGRST204' || e.pg === '42703')) throw e;
+      const strip = r => { const o = Object.assign({}, r); for (const c of LATER_COLS[t]) delete o[c]; return o; };
+      const lean = Array.isArray(rows) ? rows.map(strip) : strip(rows);
+      if (!this.behind) { this.behind = true; this.onBehind(); }
+      if (!Array.isArray(lean) && !Object.keys(lean).length) return null;
+      return this._exec(make(lean));
+    }
+  },
+  behind: false,
+  onBehind: () => {},
+
   async addMany(k, recs, onProgress) {
     if (!recs.length) return;
     for (const r of recs) S[k].set(r.id, r);
@@ -184,7 +210,7 @@ const Store = {
     return this._run(async () => {
       for (let i = 0; i < recs.length; i += 500) {
         const chunk = recs.slice(i, i + 500);
-        await this._exec(this.client.from(t).insert(chunk.map(r => recToRow(k, r, true))));
+        await this._send(t, chunk.map(r => recToRow(k, r, true)), rows => this.client.from(t).insert(rows));
         if (onProgress) onProgress(Math.min(recs.length, i + 500), recs.length);
       }
     });
@@ -209,14 +235,14 @@ const Store = {
         /* Bulk changes (imports, territory re-runs) write whole rows in a few requests. */
         for (let i = 0; i < ups.length; i += 500) {
           const chunk = ups.slice(i, i + 500);
-          await this._exec(this.client.from(t).upsert(chunk.map(u => recToRow(k, u[2], true)), { onConflict: 'id' }));
+          await this._send(t, chunk.map(u => recToRow(k, u[2], true)), rows => this.client.from(t).upsert(rows, { onConflict: 'id' }));
           done += chunk.length; if (onProgress) onProgress(done, list.length);
         }
       } else {
         /* Ordinary edits send only the fields that changed, so two people editing one record don't overwrite each other. */
         for (const [id, fields] of ups) {
           const row = recToRow(k, fields, false); delete row.id;
-          if (Object.keys(row).length) await this._exec(this.client.from(t).update(row).eq('id', id));
+          if (Object.keys(row).length) await this._send(t, row, r => this.client.from(t).update(r).eq('id', id));
           done++; if (onProgress) onProgress(done, list.length);
         }
       }

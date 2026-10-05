@@ -3,17 +3,17 @@
    ============================================================ */
 const CAP = { db: null, user: null, downloads: null, sample: null, mcp: null, uid: null, canWrite: true, isAdmin: false, checked: false };
 let ME = null;
-const CO_FILTER0 = { q: '', terr: '', rep: '', industry: '', asset: '', priority: '', status: '', view: 'all', sort: 'name', dir: 1, limit: 100 };
+const CO_FILTER0 = { q: '', line: '', terr: '', rep: '', industry: '', asset: '', priority: '', status: '', view: 'all', sort: 'name', dir: 1, limit: 100 };
 const V = {
   tab: 'dashboard', coId: null,
-  dash: { terr: '', rep: '', industry: '', asset: '', priority: '', status: '' },
+  dash: { line: '', terr: '', rep: '', industry: '', asset: '', priority: '', status: '' },
   co: Object.assign({}, CO_FILTER0),
   ct: { q: '', role: '', limit: 100 },
-  op: { stage: 'open', terr: '', rep: '', q: '' },
+  op: { stage: 'open', line: '', type: '', terr: '', rep: '', q: '' },
   tk: { tab: 'today', rep: '' },
   ac: { type: '', rep: '', range: 'week', limit: 100 },
   imp: { step: 'pick' },
-  out: { src: 'first', terr: '', rep: '', industry: '', asset: '', priority: '', status: '', n: '10', extra: '', run: null, all: false, cfgOpen: false, form: null },
+  out: { src: 'first', line: '', terr: '', rep: '', industry: '', asset: '', priority: '', status: '', n: '10', extra: '', run: null, all: false, cfgOpen: false, form: null },
 };
 const TABS = [['dashboard', 'Dashboard'], ['companies', 'Companies'], ['contacts', 'Contacts'], ['opportunities', 'Opportunities'], ['tasks', 'Tasks'], ['outreach', 'Outreach'], ['activity', 'Activity'], ['territories', 'Territories'], ['review', 'Review'], ['import', 'Import / Export']];
 
@@ -30,6 +30,7 @@ const VIEWS = [
   { id: 'fleet', name: 'Fleet Prospects', hint: 'Trucks, trailers or fleet vehicles', fn: c => hasAsset(c, ['Trucks', 'Trailers', 'Fleet Vehicles']) },
   { id: 'nrv', name: 'NRV Construction', hint: 'NRV territory: construction, excavation, grading, paving, utilities', fn: c => c.terr === 'NRV' && CONSTRUCTION.includes(c.industry) },
   { id: 'nc', name: 'North Carolina Prospects', hint: 'NC companies, excluding Do Not Contact', fn: c => normState(c.state) === 'NC' && c.status !== 'Do Not Contact' },
+  { id: 'referral', name: 'Referral Partners', hint: 'Attorneys, banks, agents and others who send estate and real estate work', fn: c => isReferral(c) },
   { id: 'dormant', name: 'Dormant Prospects', hint: 'No contact in more than 60 days', fn: (c, i) => isDormant(c, i) },
   /* reached from the dashboard tiles */
   { id: 'fu-today', name: 'Follow-ups due today', hidden: true, fn: c => c.nextFU === today() },
@@ -44,6 +45,7 @@ const VIEWS = [
 const viewById = id => VIEWS.find(v => v.id === id) || VIEWS[0];
 
 function coPass(c, f, skipRep) {
+  if (f.line && !coLines(c).includes(f.line)) return false;
   if (f.terr && c.terr !== f.terr) return false;
   if (!skipRep && f.rep && (f.rep === 'none' ? !!c.rep : c.rep !== f.rep)) return false;
   if (f.industry && c.industry !== f.industry) return false;
@@ -205,7 +207,7 @@ function fsel(scope, key, label, opts) {
 const terrOpts = withUn => terrCodes(false).map(c => [c, c + ' · ' + S.terr[c].name]).concat(withUn ? [[UNASSIGNED, 'Unassigned']] : []);
 const repOpts = withNone => repList(false).map(id => [id, S.team[id].name]).concat(withNone ? [['none', 'No rep assigned']] : []);
 function coFilterBar(scope) {
-  return fsel(scope, 'terr', 'Territory', terrOpts(true)) + fsel(scope, 'rep', 'Rep', repOpts(true)) + fsel(scope, 'industry', 'Industry', INDUSTRIES) +
+  return fsel(scope, 'line', 'Line', LINES) + fsel(scope, 'terr', 'Territory', terrOpts(true)) + fsel(scope, 'rep', 'Rep', repOpts(true)) + fsel(scope, 'industry', 'Industry', INDUSTRIES) +
     fsel(scope, 'asset', 'Asset potential', ASSETS) + fsel(scope, 'priority', 'Priority', PRIORITIES) + fsel(scope, 'status', 'Lead status', STATUSES);
 }
 const money = n => (n == null || n === '' || isNaN(n)) ? '' : '$' + Math.round(Number(n)).toLocaleString();
@@ -318,7 +320,7 @@ async function changeStatus(c, status, extra) {
    ============================================================ */
 function companySpec(c) {
   return [
-    { k: 'name', label: 'Company name', req: true, full: true },
+    { k: 'name', label: 'Name (company, person or estate)', req: true, full: true },
     { k: 'phone', label: 'Main phone', type: 'tel' },
     { k: 'web', label: 'Website', ph: 'example.com' },
     { k: 'addr', label: 'Address', full: true },
@@ -333,6 +335,7 @@ function companySpec(c) {
     { k: 'status', label: 'Lead status', type: 'select', opts: STATUSES, noBlank: true, def: 'New' },
     { k: 'rep', label: 'Assigned rep', type: 'select', opts: repOpts(false) },
     { k: 'nextFU', label: 'Next follow-up date', type: 'date' },
+    { k: 'lines', label: 'Lines of business (leave blank for Equipment)', type: 'multi', opts: LINES },
     { k: 'assets', label: 'Asset potential', type: 'multi', opts: ASSETS },
     { k: 'optOut', label: 'Email opt-out', type: 'check' }, { k: 'dnc', label: 'Do not call', type: 'check' },
     { k: 'srcUrl', label: 'Source URL', full: true, max: 500 },
@@ -359,7 +362,7 @@ function openCompany(id) {
     extra: c ? `<button type="button" class="btn danger" data-act="del" data-kind="co" data-id="${esc(c.id)}">Delete</button>` : '',
     onSubmit: () => guard(async () => {
       const v = readFields(spec);
-      if (!v.name) return dlgMsg('Enter the company name.');
+      if (!v.name) return dlgMsg('Enter the name.');
       if (v.state && !normState(v.state)) return dlgMsg('Enter the state as a two-letter code, such as VA or NC.');
       if (!confirmed) {
         const dup = findExactCompany(v, c && c.id);
@@ -492,6 +495,7 @@ function openActivity(coId, type, actId, ctId) {
 
 function openTask(id, coId, preset) {
   const t = id ? S.tk.get(id) : null;
+  if (isAppt(t)) return openAppt(id);
   if (t) coId = t.co;
   const contacts = coId ? (derive().ctByCo.get(coId) || []) : [];
   const spec = [
@@ -500,7 +504,7 @@ function openTask(id, coId, preset) {
     { k: 'ct', label: 'Contact', type: 'select', opts: contacts.map(x => [x.id, ctName(x)]), blank: 'No specific contact' },
     { k: 'rep', label: 'Assigned to', type: 'select', opts: repOpts(false) },
     { k: 'due', label: 'Due date', type: 'date', after: fuQuickHtml('f-due') },
-    { k: 'type', label: 'Task type', type: 'select', opts: TASK_TYPES, noBlank: true },
+    { k: 'type', label: 'Task type', type: 'select', opts: TASK_TYPES.filter(x => x !== 'Appointment'), noBlank: true },
     { k: 'priority', label: 'Priority', type: 'select', opts: TASK_PRI, noBlank: true },
     { k: 'status', label: 'Status', type: 'select', opts: TASK_STATUS, noBlank: true },
     { k: 'notes', label: 'Notes', type: 'textarea', full: true },
@@ -522,59 +526,6 @@ function openTask(id, coId, preset) {
     }),
   });
 }
-
-function openOpp(id, coId) {
-  const o = id ? S.op.get(id) : null;
-  if (o) coId = o.co;
-  const c = coId ? S.co.get(coId) : null;
-  const contacts = coId ? (derive().ctByCo.get(coId) || []) : [];
-  const spec = [
-    { k: 'name', label: 'Opportunity name', req: true, full: true },
-    coPickerField(coId),
-    { k: 'ct', label: 'Contact', type: 'select', opts: contacts.map(x => [x.id, ctName(x)]), blank: 'No specific contact' },
-    { k: 'rep', label: 'Assigned rep', type: 'select', opts: repOpts(false) },
-    { k: 'category', label: 'Equipment category', type: 'select', opts: ASSETS },
-    { k: 'units', label: 'Estimated number of units', type: 'number' },
-    { k: 'value', label: 'Estimated asset value ($)', type: 'number' },
-    { k: 'location', label: 'Location of equipment' },
-    { k: 'desc', label: 'Equipment description', type: 'textarea', full: true, ph: 'Year, make, model, hours or miles, condition' },
-    { k: 'stage', label: 'Opportunity stage', type: 'select', opts: STAGES, noBlank: true },
-    { k: 'prob', label: 'Probability (%)', type: 'number', hint: 'Fills in from the stage. Change it if you know better.' },
-    { k: 'auctionDate', label: 'Auction date', type: 'date' },
-    { k: 'closeDate', label: 'Expected close date', type: 'date' },
-    { k: 'commission', label: 'Commission structure', full: true, ph: 'For example: 10% straight commission, no reserve' },
-    { k: 'notes', label: 'Notes', type: 'textarea', full: true },
-  ];
-  const prim = coId ? primaryContact(coId) : null;
-  const vals = o || { name: c ? c.name + ' equipment' : '', ct: prim ? prim.id : '', rep: (c && c.rep) || ME || '', stage: 'Identified', prob: STAGE_PROB.Identified, location: c ? clean((c.city || '') + (c.state ? ', ' + c.state : '')) : '', category: c && (c.assets || []).length === 1 ? c.assets[0] : '' };
-  openDialog({
-    title: o ? 'Edit opportunity' : 'New opportunity', wide: true,
-    sub: o ? '' : 'Create an opportunity only when there is actual equipment or a real consignment possibility.',
-    body: fieldsHtml(spec, vals),
-    extra: o ? `<button type="button" class="btn danger" data-act="del" data-kind="op" data-id="${esc(o.id)}">Delete</button>` : '',
-    onSubmit: () => guard(async () => {
-      const v = readFields(spec);
-      const pick = readCoPicker(coId);
-      if (pick.error) return dlgMsg(pick.error);
-      if (!v.name) return dlgMsg('Name the opportunity.');
-      if (v.prob != null) v.prob = Math.max(0, Math.min(100, v.prob));
-      v.co = pick.id; v.updated = nowIso();
-      closeDialog();
-      if (o) await Store.patch('op', o.id, v);
-      else {
-        const p = Store.add('op', Object.assign({ id: uid(), created: nowIso() }, v));
-        const co = v.co && S.co.get(v.co);
-        toast('Opportunity created.');
-        await p;
-        if (co && !['Consignment Opportunity', 'Consignor'].concat(DEAD_STATUSES).includes(co.status)) {
-          toast('Update ' + co.name + ' to Consignment Opportunity?', { action: 'Update status', onAction: () => guard(() => changeStatus(S.co.get(co.id), 'Consignment Opportunity')) });
-        }
-      }
-    }),
-  });
-}
-const oppTerr = o => { const c = o.co && S.co.get(o.co); return (c && c.terr) || UNASSIGNED; };
-const oppRep = o => o.rep || ((o.co && S.co.get(o.co)) || {}).rep || '';
 
 function openTerritory(code) {
   const t = code ? S.terr[code] : null;
@@ -712,9 +663,10 @@ function barList(title, rows, emptyMsg) {
 }
 SCREENS.dashboard = function () {
   const d = derive(), t = today(), ws = weekStart(), we = weekEnd(), f = V.dash;
-  const anyCo = !!(f.terr || f.industry || f.asset || f.priority || f.status);
-  const cos = []; const coOk = new Set();
-  for (const c of S.co.values()) { if (coPass(c, f, true)) { coOk.add(c.id); if (coPass(c, f)) cos.push(c); } }
+  const anyCoNoLine = !!(f.terr || f.industry || f.asset || f.priority || f.status), anyCo = anyCoNoLine || !!f.line;
+  const fNoLine = Object.assign({}, f, { line: '' });
+  const cos = []; const coOk = new Set(), coOkNoLine = new Set();
+  for (const c of S.co.values()) { if (coPass(c, fNoLine, true)) coOkNoLine.add(c.id); if (coPass(c, f, true)) { coOk.add(c.id); if (coPass(c, f)) cos.push(c); } }
   const relOk = (coId, rep) => (!anyCo || (coId && coOk.has(coId))) && (!f.rep || (f.rep === 'none' ? !rep : rep === f.rep));
   const n = { fuToday: 0, fuOver: 0, newLead: 0, aplus: 0, agrade: 0, interested: 0, hasEquip: 0, newWeek: 0 };
   const fuList = [];
@@ -730,7 +682,7 @@ SCREENS.dashboard = function () {
     if (c.status === 'Has Equipment') n.hasEquip++;
     if (c.created && isoToYmd(c.created) >= ws) n.newWeek++;
   }
-  let tkToday = 0, tkOver = 0, tkWeek = 0; const tkList = [];
+  let tkToday = 0, tkOver = 0, tkWeek = 0, apWeek = 0, apToday = 0; const tkList = [];
   for (const k of S.tk.values()) {
     if (k.status !== 'Open' && k.status !== 'Snoozed') continue;
     if (!relOk(k.co, k.rep)) continue;
@@ -739,6 +691,7 @@ SCREENS.dashboard = function () {
     if (k.due < t) tkOver++;
     if (k.due >= t && k.due <= we) tkWeek++;
     if (k.due <= t) tkList.push(k);
+    if (isAppt(k) && k.due >= t && k.due <= we) { apWeek++; if (k.due === t) apToday++; }
   }
   let calls = 0, emails = 0;
   for (const a of S.ac.values()) {
@@ -747,9 +700,13 @@ SCREENS.dashboard = function () {
     if (a.type === 'Phone Call' || a.type === 'Voicemail') calls++;
     if (a.type === 'Email Sent') emails++;
   }
-  let openOpps = 0, openVal = 0; const byTerr = new Map(), byStage = new Map();
+  let openOpps = 0, openVal = 0; const byTerr = new Map(), byStage = new Map(), pipeOpps = [];
   for (const o of S.op.values()) {
-    if (!relOk(o.co, oppRep(o))) continue;
+    /* An opportunity is matched on its own line; the company only has to pass the other filters. */
+    if (anyCoNoLine && !(o.co && coOkNoLine.has(o.co))) continue;
+    if (f.rep && (f.rep === 'none' ? !!oppRep(o) : oppRep(o) !== f.rep)) continue;
+    if (f.line && oppLine(o) !== f.line) continue;
+    pipeOpps.push(o);
     byStage.set(o.stage, (byStage.get(o.stage) || 0) + 1);
     if (!isOpenStage(o.stage)) continue;
     openOpps++; openVal += Number(o.value) || 0;
@@ -757,7 +714,7 @@ SCREENS.dashboard = function () {
     const cur = byTerr.get(tc) || { n: 0, v: 0 }; cur.n++; cur.v += Number(o.value) || 0; byTerr.set(tc, cur);
   }
   fuList.sort((a, b) => a.nextFU < b.nextFU ? -1 : a.nextFU > b.nextFU ? 1 : PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority));
-  tkList.sort((a, b) => a.due < b.due ? -1 : a.due > b.due ? 1 : 0);
+  tkList.sort(apptSort);
   const filtered = !!(anyCo || f.rep);
   const empty = S.co.size === 0;
   const head = `<div class="page-head"><div><h1>Dashboard</h1><p class="sub">${esc(new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))} · week of ${esc(fmtDate(ws))}</p></div></div>
@@ -771,6 +728,7 @@ SCREENS.dashboard = function () {
       ${tile('Tasks due today', tkToday, 'go-tasks', 'data-tk="today"', tkToday ? 'now' : '')}
       ${tile('Overdue tasks', tkOver, 'go-tasks', 'data-tk="overdue"', tkOver ? 'over' : '')}
       ${tile('Tasks due this week', tkWeek, 'go-tasks', 'data-tk="week"')}
+      ${tile('Appointments this week', apWeek, 'go-tasks', 'data-tk="appts"', apToday ? 'now' : '', apToday ? apToday + ' today' : '')}
     </div>
     <h2 class="sec">Prospects</h2>
     <div class="tiles">
@@ -788,16 +746,19 @@ SCREENS.dashboard = function () {
       ${tile('New companies added', n.newWeek, 'go-view', 'data-view="newweek"')}
     </div>`;
   const terrRows = [...byTerr.entries()].sort((a, b) => b[1].n - a[1].n).map(([code, v]) => ({ label: code + ' ' + terrName(code), html: terrTag(code) + ' <span class="bar-name">' + esc(terrName(code)) + '</span>', n: v.n, sub: v.v ? money(v.v) : '' }));
-  const stageRows = STAGES.filter(s => byStage.get(s)).map(s => ({ label: s, n: byStage.get(s) }));
+  const stageRows = ALL_STAGES.filter(s => byStage.get(s)).map(s => ({ label: s, n: byStage.get(s) }));
   const fuHtml = `<section class="panel"><h3>Follow-ups due now</h3>${fuList.length ? `<ul class="rows">${fuList.slice(0, 8).map(c => { const p = primaryContact(c.id); const ph = (p && (p.mobile || p.phone)) || c.phone; return `<li><div class="rows-main"><button type="button" class="name" data-act="co-open" data-id="${esc(c.id)}">${esc(c.name)}</button><span class="muted">${esc([p ? ctName(p) : '', ph ? fmtPhone(ph) : ''].filter(Boolean).join(' · '))}</span></div><div class="rows-meta">${priChip(c.priority)}${dueSpan(c.nextFU)}<button type="button" class="btn sm w" data-act="log" data-id="${esc(c.id)}" data-type="Phone Call">Log call</button></div></li>`; }).join('')}</ul>${fuList.length > 8 ? `<button type="button" class="link" data-act="go-view" data-view="followup">See all ${fuList.length}</button>` : ''}` : `<p class="muted">${empty ? 'Companies with a follow-up date of today or earlier will be listed here.' : 'Nothing is due. Follow-ups appear here on their date.'}</p>`}</section>`;
   const tkHtml = `<section class="panel"><h3>Tasks due now</h3>${tkList.length ? `<ul class="rows">${tkList.slice(0, 8).map(taskRow).join('')}</ul>${tkList.length > 8 ? `<button type="button" class="link" data-act="go-tasks" data-tk="open">See all ${tkList.length}</button>` : ''}` : `<p class="muted">${empty ? 'Open tasks due today or earlier will be listed here.' : 'No tasks are due.'}</p>`}</section>`;
-  return head + start + tiles + `<div class="two">${fuHtml}${tkHtml}</div><div class="two">${barList('Open opportunities by territory', terrRows, 'Open opportunities will be counted here by territory.')}${barList('Opportunities by stage', stageRows, 'Opportunities will be counted here by stage.')}</div>`;
+  return head + start + tiles + `<div class="two">${fuHtml}${tkHtml}</div><div class="two">${barList('Open opportunities by territory', terrRows, 'Open opportunities will be counted here by territory.')}${barList('Opportunities by stage', stageRows, 'Opportunities will be counted here by stage.')}</div>${barList('In the open pipeline, by type', pipelineByType(pipeOpps).slice(0, 12), 'Counts of what is in open opportunities: excavators, skid steers, building materials and so on.')}`;
 };
 function taskRow(k) {
   const done = k.status === 'Completed' || k.status === 'Cancelled';
+  const ap = isAppt(k);
+  const line = ap ? [apptWhen(k), k.location, k.ct && S.ct.get(k.ct) ? 'with ' + ctName(S.ct.get(k.ct)) : '', repName(k.rep)] : [k.type, k.co ? coName(k.co) : '', repName(k.rep)];
+  const cal = ap && !done ? calendarHref(k) : '';
   return `<li class="${done ? 'done' : ''}"><label class="tick w" title="${done ? 'Reopen' : 'Mark complete'}"><input type="checkbox" id="tk-${esc(k.id)}" data-change="tk-done" data-id="${esc(k.id)}"${k.status === 'Completed' ? ' checked' : ''}><span class="vh">Complete ${esc(k.name)}</span></label>
-    <div class="rows-main"><button type="button" class="name" data-act="tk-open" data-id="${esc(k.id)}">${esc(k.name)}</button><span class="muted">${esc([k.type, k.co ? coName(k.co) : '', repName(k.rep)].filter(Boolean).join(' · '))}${k.status === 'Snoozed' ? ' · Snoozed' : ''}${k.status === 'Cancelled' ? ' · Cancelled' : ''}</span></div>
-    <div class="rows-meta">${k.priority === 'High' ? '<span class="st st-stop">High</span>' : ''}${done ? `<span class="muted">${esc(k.doneAt ? 'Done ' + fmtDate(isoToYmd(k.doneAt)) : k.status)}</span>` : dueSpan(k.due)}${done ? '' : `<button type="button" class="btn sm w" data-act="tk-snooze" data-id="${esc(k.id)}" data-days="1" title="Snooze 1 day">+1d</button><button type="button" class="btn sm w" data-act="tk-snooze" data-id="${esc(k.id)}" data-days="7" title="Snooze 1 week">+1w</button>`}</div></li>`;
+    <div class="rows-main"><button type="button" class="name" data-act="tk-open" data-id="${esc(k.id)}">${esc(k.name)}</button><span class="muted">${esc(line.filter(Boolean).join(' · '))}${k.status === 'Snoozed' ? ' · Snoozed' : ''}${k.status === 'Cancelled' ? ' · Cancelled' : ''}</span></div>
+    <div class="rows-meta">${ap ? '<span class="st st-out">Appointment</span>' : ''}${k.priority === 'High' ? '<span class="st st-stop">High</span>' : ''}${done ? `<span class="muted">${esc(k.doneAt ? 'Done ' + fmtDate(isoToYmd(k.doneAt)) : k.status)}</span>` : dueSpan(k.due)}${cal ? `<a class="btn sm" href="${esc(cal)}" target="_blank" rel="noopener noreferrer" title="Opens Google Calendar with this appointment filled in">Add to calendar</a>` : ''}${done || ap ? '' : `<button type="button" class="btn sm w" data-act="tk-snooze" data-id="${esc(k.id)}" data-days="1" title="Snooze 1 day">+1d</button><button type="button" class="btn sm w" data-act="tk-snooze" data-id="${esc(k.id)}" data-days="7" title="Snooze 1 week">+1w</button>`}</div></li>`;
 }
 
 /* ---------- Companies ---------- */
@@ -815,14 +776,14 @@ SCREENS.companies = function () {
     const as = c.assets || [];
     const flags = (c.status === 'Do Not Contact' || c.dnc ? '<span class="flag">DNC</span>' : '') + (c.optOut ? '<span class="flag">No email</span>' : '') + (d.dupIds.has(c.id) ? '<span class="flag warn">Dup?</span>' : '');
     return `<tr data-act="co-open" data-id="${esc(c.id)}">
-      <td class="co"><button type="button" class="name" data-act="co-open" data-id="${esc(c.id)}">${esc(c.name)}</button>${flags}<div class="muted">${esc([clean((c.city || '') + (c.state ? ', ' + c.state : '')), c.industry].filter(Boolean).join(' · '))}</div></td>
+      <td class="co"><button type="button" class="name" data-act="co-open" data-id="${esc(c.id)}">${esc(c.name)}</button>${coLines(c).filter(l => l !== 'Equipment').map(l => `<span class="st st-warn">${esc(l)}</span>`).join('')}${flags}<div class="muted">${esc([clean((c.city || '') + (c.state ? ', ' + c.state : '')), c.industry].filter(Boolean).join(' · '))}</div></td>
       <td>${terrTag(c.terr)}</td><td>${priChip(c.priority)}</td><td>${statusChip(c.status)}</td>
       <td class="assets">${as.length ? esc(as.slice(0, 2).join(', ')) + (as.length > 2 ? ` <span class="muted">+${as.length - 2}</span>` : '') : '<span class="muted">–</span>'}</td>
       <td>${esc(repName(c.rep)) || '<span class="muted">–</span>'}</td>
       <td>${info.last ? esc(fmtDate(info.last)) : '<span class="muted">Never</span>'}<div class="muted">${esc([info.last ? info.method : '', info.attempts ? info.attempts + (info.attempts === 1 ? ' attempt' : ' attempts') : ''].filter(Boolean).join(' · '))}</div></td>
       <td>${dueSpan(c.nextFU)}</td></tr>`;
   }).join('');
-  const any = f.q || f.terr || f.rep || f.industry || f.asset || f.priority || f.status;
+  const any = f.q || f.line || f.terr || f.rep || f.industry || f.asset || f.priority || f.status;
   const emptyMsg = S.co.size === 0
     ? `<div class="empty"><h2>No companies yet</h2><p>Import a prospect list or add a company. Each company gets a territory, a lead status of New, and an activity timeline.</p><div class="row"><button type="button" class="btn primary w" data-act="tab" data-tab="import">Import a spreadsheet</button><button type="button" class="btn w" data-act="co-new">Add a company</button></div></div>`
     : `<div class="empty"><p>No companies match ${esc(view.name)}${any ? ' with these filters' : ''}.</p>${any ? '<button type="button" class="link" data-act="co-clear">Clear filters</button>' : ''}</div>`;
@@ -838,9 +799,9 @@ function companyDetail(c) {
   const d = derive(), info = coInfo(c);
   const contacts = (d.ctByCo.get(c.id) || []).slice().sort((a, b) => (b.primary ? 1 : 0) - (a.primary ? 1 : 0) || ctName(a).localeCompare(ctName(b)));
   const acts = d.actByCo.get(c.id) || [];
-  const tasks = (d.tkByCo.get(c.id) || []).filter(k => k.status === 'Open' || k.status === 'Snoozed').sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1);
+  const tasks = (d.tkByCo.get(c.id) || []).filter(isOpenTask).sort(apptSort);
   const opps = (d.opByCo.get(c.id) || []).slice().sort((a, b) => (b.created || '') < (a.created || '') ? -1 : 1);
-  const t = S.terr[c.terr];
+  const t = S.terr[c.terr], appt = nextAppt(c.id);
   const url = safeUrl(c.web), src = safeUrl(c.srcUrl);
   const flags = [
     c.status === 'Do Not Contact' ? '<span class="flag big">Do Not Contact</span>' : '',
@@ -848,6 +809,7 @@ function companyDetail(c) {
     c.terr === UNASSIGNED ? '<span class="flag big warn">Territory needs review</span>' : '',
     d.dupIds.has(c.id) ? '<button type="button" class="flag big warn" data-act="tab" data-tab="review">Possible duplicate</button>' : '',
     isDormant(c, info) ? '<span class="flag big warn">Dormant: review for nurture</span>' : '',
+    appt ? `<button type="button" class="flag big appt" data-act="tk-open" data-id="${esc(appt.id)}">${esc((appt.apptKind || 'Appointment') + ' ' + apptWhen(appt))}</button>` : '',
   ].join('');
   const row = (label, val) => `<div class="kv"><dt>${esc(label)}</dt><dd>${val || '<span class="muted">–</span>'}</dd></div>`;
   const details = `<dl class="kvs">
@@ -859,6 +821,7 @@ function companyDetail(c) {
     ${row('Territory owner', t ? esc(repName(t.owner)) : '')}
     ${row('Assigned rep', esc(repName(c.rep)))}
     ${row('Industry', esc([c.industry, c.subIndustry].filter(Boolean).join(' · ')))}
+    ${row('Lines of business', esc(coLines(c).join(', ')))}
     ${row('Asset potential', (c.assets || []).map(a => `<span class="asset">${esc(a)}</span>`).join(''))}
     ${row('Lead source', esc(c.source))}${row('Lead type', esc(c.leadType))}
     ${row('Last contact', info.last ? esc(fmtDate(info.last) + (info.method ? ' · ' + info.method : '')) : 'Never')}
@@ -870,7 +833,7 @@ function companyDetail(c) {
       <div class="muted">${esc([x.title, x.role && x.role !== x.title ? x.role : '', x.dept].filter(Boolean).join(' · '))}</div>
       ${x.email ? `<div><span class="sel">${esc(x.email)}</span>${copyBtn(x.email)}</div>` : ''}${x.phone ? `<div><span class="sel">${esc(fmtPhone(x.phone))}</span>${copyBtn(fmtPhone(x.phone))}</div>` : ''}${x.mobile ? `<div><span class="sel">${esc(fmtPhone(x.mobile))}</span> <span class="muted">mobile</span>${copyBtn(fmtPhone(x.mobile))}</div>` : ''}
       <div class="row tight"><button type="button" class="btn sm w" data-act="log" data-id="${esc(c.id)}" data-ct="${esc(x.id)}" data-type="Phone Call">Log call</button><button type="button" class="btn sm w" data-act="log" data-id="${esc(c.id)}" data-ct="${esc(x.id)}" data-type="Email Sent">Log email</button>${CAP.sample && x.email && !x.optOut ? `<button type="button" class="btn sm ai w" data-act="dr-new" data-id="${esc(c.id)}" data-ct="${esc(x.id)}">Draft email</button>` : ''}</div></li>`).join('')}</ul>` : `<p class="muted">No contacts yet. Add the person who makes equipment decisions.</p>`;
-  const opHtml = opps.length ? `<ul class="cards">${opps.map(o => `<li><div class="card-h"><button type="button" class="name" data-act="op-open" data-id="${esc(o.id)}">${esc(o.name)}</button><span class="st ${isOpenStage(o.stage) ? 'st-hot' : 'st-early'}">${esc(o.stage)}</span></div><div class="muted">${esc([o.category, o.units ? o.units + ' units' : '', money(o.value), o.auctionDate ? 'Auction ' + fmtDate(o.auctionDate) : ''].filter(Boolean).join(' · '))}</div></li>`).join('')}</ul>` : `<p class="muted">No opportunities. Create one when there is actual equipment to sell.</p>`;
+  const opHtml = opps.length ? `<ul class="cards">${opps.map(o => `<li><div class="card-h"><button type="button" class="name" data-act="op-open" data-id="${esc(o.id)}">${esc(o.name)}</button><span class="st ${isOpenStage(o.stage) ? 'st-hot' : (WON_STAGES.includes(o.stage) ? 'st-won' : 'st-early')}">${esc(o.stage)}</span></div><div class="muted">${esc([oppLine(o) !== 'Equipment' ? oppLine(o) : '', itemsSummary(o), money(o.value), o.auctionDate ? 'Auction ' + fmtDate(o.auctionDate) : ''].filter(Boolean).join(' · '))}</div></li>`).join('')}</ul>` : `<p class="muted">No opportunities. Create one when there is something real to sell.</p>`;
   const tlHtml = acts.length ? `<ol class="tl">${acts.map(a => `<li><div class="tl-h"><span class="tl-type">${esc(a.type)}</span><span class="muted">${esc([fmtDateTime(a.at), repName(a.by), a.ct && S.ct.get(a.ct) ? 'with ' + ctName(S.ct.get(a.ct)) : ''].filter(Boolean).join(' · '))}</span><button type="button" class="link w" data-act="ac-open" data-id="${esc(a.id)}">Edit</button></div>${a.outcome ? `<div class="tl-o">${esc(a.outcome)}</div>` : ''}${a.notes ? `<div class="pre">${esc(a.notes)}</div>` : ''}${a.nextFU ? `<div class="muted">Follow-up set for ${esc(fmtDate(a.nextFU))}</div>` : ''}</li>`).join('')}</ol>` : `<p class="muted">No activity yet. Log the first call or email and it appears here, newest first.</p>`;
   const logBtn = (type, label) => `<button type="button" class="btn w" data-act="log" data-id="${esc(c.id)}" data-type="${esc(type)}">${esc(label)}</button>`;
   return `<button type="button" class="back" data-act="co-back">← Companies</button>
@@ -882,10 +845,10 @@ function companyDetail(c) {
         <label class="mini-f"><span>Next follow-up</span><input id="d-fu" class="w${c.nextFU && c.nextFU <= today() ? ' over' : ''}" type="date" value="${esc(c.nextFU || '')}" data-change="co-set" data-id="${esc(c.id)}" data-key="nextFU"></label>
       </div>
     </div>
-    <div class="actions">${CAP.sample ? `<button type="button" class="btn ai w" data-act="dr-new" data-id="${esc(c.id)}">Draft email with AI</button>` : ''}${logBtn('Phone Call', 'Log call')}${logBtn('Email Sent', 'Log email')}${logBtn('Voicemail', 'Log voicemail')}${logBtn('Note', 'Add note')}<button type="button" class="btn w" data-act="log-other" data-id="${esc(c.id)}">Other activity</button><span class="grow"></span><button type="button" class="btn w" data-act="tk-new" data-id="${esc(c.id)}">+ Task</button><button type="button" class="btn w" data-act="op-new" data-id="${esc(c.id)}">+ Opportunity</button><button type="button" class="btn w" data-act="co-edit" data-id="${esc(c.id)}">Edit</button></div>
+    <div class="actions">${CAP.sample ? `<button type="button" class="btn ai w" data-act="dr-new" data-id="${esc(c.id)}">Draft email with AI</button>` : ''}${logBtn('Phone Call', 'Log call')}${logBtn('Email Sent', 'Log email')}${logBtn('Voicemail', 'Log voicemail')}${logBtn('Note', 'Add note')}<button type="button" class="btn w" data-act="log-other" data-id="${esc(c.id)}">Other activity</button><span class="grow"></span><button type="button" class="btn w" data-act="ap-new" data-id="${esc(c.id)}">+ Appointment</button><button type="button" class="btn w" data-act="tk-new" data-id="${esc(c.id)}">+ Task</button><button type="button" class="btn w" data-act="op-new" data-id="${esc(c.id)}">+ Opportunity</button><button type="button" class="btn w" data-act="co-edit" data-id="${esc(c.id)}">Edit</button></div>
     <div class="detail">
       <section class="detail-main">
-        ${tasks.length ? `<div class="panel"><h3>Open tasks</h3><ul class="rows">${tasks.map(taskRow).join('')}</ul></div>` : ''}
+        ${tasks.length ? `<div class="panel"><h3>Open tasks and appointments</h3><ul class="rows">${tasks.map(taskRow).join('')}</ul></div>` : ''}
         <div class="panel"><h3>Activity</h3>${tlHtml}</div>
       </section>
       <aside class="detail-side">
@@ -917,52 +880,24 @@ SCREENS.contacts = function () {
       : `<div class="empty"><p>${S.ct.size ? 'No contacts match.' : 'Contacts appear here as you add them to companies or import them with a prospect list.'}</p></div>`}`;
 };
 
-/* ---------- Opportunities ---------- */
-SCREENS.opportunities = function () {
-  const f = V.op, q = clean(f.q).toLowerCase();
-  const rows = [];
-  let val = 0, weighted = 0;
-  for (const o of S.op.values()) {
-    if (f.stage === 'open' ? !isOpenStage(o.stage) : (f.stage && f.stage !== 'all' && o.stage !== f.stage)) continue;
-    if (f.terr && oppTerr(o) !== f.terr) continue;
-    if (f.rep && oppRep(o) !== f.rep) continue;
-    if (q && ![o.name, coName(o.co), o.desc, o.category].join(' ').toLowerCase().includes(q)) continue;
-    rows.push(o); val += Number(o.value) || 0; weighted += (Number(o.value) || 0) * (Number(o.prob) || 0) / 100;
-  }
-  rows.sort((a, b) => STAGES.indexOf(a.stage) - STAGES.indexOf(b.stage) || (a.closeDate || '9') .localeCompare(b.closeDate || '9'));
-  const stageOpts = [['open', 'Open stages'], ['all', 'All stages']].concat(STAGES.map(s => [s, s]));
-  const body = rows.map(o => `<tr data-act="op-open" data-id="${esc(o.id)}">
-    <td class="co"><button type="button" class="name" data-act="op-open" data-id="${esc(o.id)}">${esc(o.name)}</button><div class="muted">${esc(o.category || '')}</div></td>
-    <td>${o.co && S.co.has(o.co) ? `<button type="button" class="link" data-act="co-open" data-id="${esc(o.co)}">${esc(coName(o.co))}</button>` : '<span class="muted">–</span>'}</td>
-    <td>${terrTag(oppTerr(o))}</td><td><span class="st ${isOpenStage(o.stage) ? 'st-hot' : (o.stage === 'Sold' ? 'st-won' : 'st-early')}">${esc(o.stage)}</span></td>
-    <td class="num">${o.units != null ? esc(o.units) : ''}</td><td class="num">${esc(money(o.value))}</td><td class="num">${o.prob != null ? esc(o.prob) + '%' : ''}</td>
-    <td>${esc(fmtDate(o.auctionDate))}</td><td>${esc(fmtDate(o.closeDate))}</td><td>${esc(repName(oppRep(o)))}</td></tr>`).join('');
-  return `<div class="page-head"><div><h1>Opportunities</h1><p class="sub">Actual equipment and real consignment possibilities</p></div><div class="row">${exportBtn('op')}<button type="button" class="btn primary w" data-act="op-new" data-id="">+ Opportunity</button></div></div>
-    <div class="filters"><input id="flt-op-q" type="search" class="q" placeholder="Search opportunity, company, equipment" value="${esc(f.q)}" data-input="filter" data-scope="op" data-key="q" aria-label="Search opportunities">
-      <select id="flt-op-stage" data-change="filter" data-scope="op" data-key="stage" aria-label="Stage">${optList(stageOpts, f.stage)}</select>${fsel('op', 'terr', 'Territory', terrOpts(true))}${fsel('op', 'rep', 'Rep', repOpts(false))}</div>
-    <p class="count">${rows.length} ${rows.length === 1 ? 'opportunity' : 'opportunities'}${val ? ' · ' + esc(money(val)) + ' estimated value · ' + esc(money(weighted)) + ' weighted by probability' : ''}</p>
-    ${rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Opportunity</th><th>Company</th><th>Territory</th><th>Stage</th><th class="num">Units</th><th class="num">Est. value</th><th class="num">Prob.</th><th>Auction date</th><th>Expected close</th><th>Rep</th></tr></thead><tbody>${body}</tbody></table></div>`
-      : `<div class="empty"><p>${S.op.size ? 'No opportunities match.' : 'No opportunities yet. When a company confirms it has equipment to sell, set its lead status to Has Equipment and the CRM offers to create one.'}</p></div>`}`;
-};
-
 /* ---------- Tasks ---------- */
 SCREENS.tasks = function () {
   const f = V.tk, t = today(), we = weekEnd();
-  const tabs = [['today', 'Due today'], ['overdue', 'Overdue'], ['week', 'This week'], ['open', 'All open'], ['done', 'Completed']];
-  const counts = { today: 0, overdue: 0, week: 0, open: 0, done: 0 };
+  const tabs = [['today', 'Due today'], ['overdue', 'Overdue'], ['week', 'This week'], ['appts', 'Appointments'], ['open', 'All open'], ['done', 'Completed']];
+  const counts = { today: 0, overdue: 0, week: 0, appts: 0, open: 0, done: 0 };
   const rows = [];
   for (const k of S.tk.values()) {
     if (f.rep && (f.rep === 'none' ? !!k.rep : k.rep !== f.rep)) continue;
     const open = k.status === 'Open' || k.status === 'Snoozed';
     const which = [];
-    if (open) { which.push('open'); if (k.due === t) which.push('today'); if (k.due && k.due < t) which.push('overdue'); if (k.due && k.due >= t && k.due <= we) which.push('week'); }
+    if (open) { which.push('open'); if (isAppt(k)) which.push('appts'); if (k.due === t) which.push('today'); if (k.due && k.due < t) which.push('overdue'); if (k.due && k.due >= t && k.due <= we) which.push('week'); }
     else which.push('done');
     for (const w of which) counts[w]++;
     if (which.includes(f.tab)) rows.push(k);
   }
   if (f.tab === 'done') rows.sort((a, b) => (b.doneAt || b.created || '').localeCompare(a.doneAt || a.created || ''));
-  else rows.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || TASK_PRI.indexOf(a.priority) - TASK_PRI.indexOf(b.priority));
-  return `<div class="page-head"><div><h1>Tasks</h1><p class="sub">Calls, emails and follow-ups with a due date</p></div><div class="row">${exportBtn('tk')}<button type="button" class="btn primary w" data-act="tk-new" data-id="">+ Task</button></div></div>
+  else rows.sort((a, b) => apptSort(a, b) || TASK_PRI.indexOf(a.priority) - TASK_PRI.indexOf(b.priority));
+  return `<div class="page-head"><div><h1>Tasks</h1><p class="sub">Appointments, calls, emails and follow-ups with a due date</p></div><div class="row">${exportBtn('tk')}<button type="button" class="btn w" data-act="ap-new" data-id="">+ Appointment</button><button type="button" class="btn primary w" data-act="tk-new" data-id="">+ Task</button></div></div>
     <div class="filters"><div class="seg" role="tablist">${tabs.map(([id, l]) => `<button type="button" role="tab" aria-selected="${f.tab === id}" class="${f.tab === id ? 'on' : ''}" data-act="tk-tab" data-tk="${id}">${l} <span class="cnt">${counts[id]}</span></button>`).join('')}</div>
       ${ME ? `<button type="button" class="pill${f.rep === ME ? ' on' : ''}" data-act="tk-me">Mine</button>` : ''}${fsel('tk', 'rep', 'Assigned to', repOpts(true))}</div>
     ${rows.length ? `<div class="panel flush"><ul class="rows">${rows.slice(0, 300).map(taskRow).join('')}</ul></div>` : `<div class="empty"><p>${S.tk.size ? 'Nothing in this list.' : 'No tasks yet. Add one from a company page, or change a lead to Interested and a follow-up task is created for you.'}</p></div>`}`;
@@ -1033,16 +968,17 @@ SCREENS.review = function () {
 function exportData(kind) {
   const d = derive();
   if (kind === 'co') {
-    const head = ['Company Name', 'Territory Code', 'Territory Name', 'Territory State', 'Territory Owner', 'Address', 'City', 'County', 'State', 'ZIP Code', 'Website', 'Main Phone', 'Industry', 'Sub-Industry', 'Lead Source', 'Lead Type', 'Prospect Priority', 'Lead Status', 'Asset Potential', 'Assigned Rep', 'Primary Contact', 'Last Contact Date', 'Next Follow-Up Date', 'Last Contact Method', 'Outreach Attempt Count', 'Email Opt-Out', 'Do Not Call', 'Notes', 'Source URL', 'Date Created', 'Date Updated'];
+    const head = ['Company Name', 'Territory Code', 'Territory Name', 'Territory State', 'Territory Owner', 'Address', 'City', 'County', 'State', 'ZIP Code', 'Website', 'Main Phone', 'Industry', 'Sub-Industry', 'Lead Source', 'Lead Type', 'Prospect Priority', 'Lead Status', 'Asset Potential', 'Assigned Rep', 'Primary Contact', 'Last Contact Date', 'Next Follow-Up Date', 'Last Contact Method', 'Outreach Attempt Count', 'Email Opt-Out', 'Do Not Call', 'Notes', 'Source URL', 'Date Created', 'Date Updated', 'Lines of Business'];
     const list = V.tab === 'companies' && !V.coId ? filterCompanies(V.co).map(r => r.c) : [...S.co.values()];
-    return { name: 'matthews-companies', head, rows: list.map(c => { const i = coInfo(c), t = S.terr[c.terr] || {}, p = primaryContact(c.id); return [c.name, c.terr, c.terr === UNASSIGNED ? '' : t.name, t.state, repName(t.owner), c.addr, c.city, c.county, c.state, c.zip, c.web, c.phone, c.industry, c.subIndustry, c.source, c.leadType, c.priority, c.status, (c.assets || []).join('; '), repName(c.rep), ctName(p), i.last, c.nextFU, i.method, i.attempts, c.optOut ? 'Yes' : 'No', c.dnc ? 'Yes' : 'No', c.notes, c.srcUrl, isoToYmd(c.created || ''), isoToYmd(c.updated || '')]; }) };
+    return { name: 'matthews-companies', head, rows: list.map(c => { const i = coInfo(c), t = S.terr[c.terr] || {}, p = primaryContact(c.id); return [c.name, c.terr, c.terr === UNASSIGNED ? '' : t.name, t.state, repName(t.owner), c.addr, c.city, c.county, c.state, c.zip, c.web, c.phone, c.industry, c.subIndustry, c.source, c.leadType, c.priority, c.status, (c.assets || []).join('; '), repName(c.rep), ctName(p), i.last, c.nextFU, i.method, i.attempts, c.optOut ? 'Yes' : 'No', c.dnc ? 'Yes' : 'No', c.notes, c.srcUrl, isoToYmd(c.created || ''), isoToYmd(c.updated || ''), coLines(c).join('; ')]; }) };
   }
   if (kind === 'ct') return { name: 'matthews-contacts', head: ['First Name', 'Last Name', 'Full Name', 'Company', 'Job Title', 'Department', 'Email', 'Phone', 'Mobile Phone', 'Contact Role', 'Primary Contact?', 'Email Opt-Out', 'Do Not Call', 'Notes', 'Last Contact Date', 'Next Follow-Up Date'],
     rows: [...S.ct.values()].map(x => { const a = (d.actByCt.get(x.id) || [])[0]; return [x.first, x.last, ctName(x), coName(x.co), x.title, x.dept, x.email, x.phone, x.mobile, x.role, x.primary ? 'Yes' : 'No', x.optOut ? 'Yes' : 'No', x.dnc ? 'Yes' : 'No', x.notes, a ? isoToYmd(a.at) : '', x.nextFU]; }) };
-  if (kind === 'op') return { name: 'matthews-opportunities', head: ['Opportunity Name', 'Company', 'Contact', 'Territory', 'Assigned Rep', 'Equipment Category', 'Equipment Description', 'Estimated Number of Units', 'Estimated Asset Value', 'Auction Date', 'Commission Structure', 'Location of Equipment', 'Opportunity Stage', 'Probability', 'Expected Close Date', 'Notes', 'Date Created', 'Date Updated'],
-    rows: [...S.op.values()].map(o => [o.name, coName(o.co), ctName(S.ct.get(o.ct)), oppTerr(o), repName(oppRep(o)), o.category, o.desc, o.units, o.value, o.auctionDate, o.commission, o.location, o.stage, o.prob, o.closeDate, o.notes, isoToYmd(o.created || ''), isoToYmd(o.updated || '')]) };
-  if (kind === 'tk') return { name: 'matthews-tasks', head: ['Task Name', 'Company', 'Contact', 'Assigned User', 'Due Date', 'Task Type', 'Priority', 'Status', 'Notes'],
-    rows: [...S.tk.values()].map(k => [k.name, coName(k.co), ctName(S.ct.get(k.ct)), repName(k.rep), k.due, k.type, k.priority, k.status, k.notes]) };
+  if (kind === 'op') return { name: 'matthews-opportunities', head: ['Opportunity Name', 'Line of Business', 'Company', 'Contact', 'Referred By', 'Territory', 'Assigned Rep', 'Items', 'Number of Units', 'Estimated Value', 'Auction Date', 'Commission Structure', 'Location', 'Opportunity Stage', 'Probability', 'Expected Close Date', 'Details', 'Notes', 'Date Created', 'Date Updated'],
+    rows: [...S.op.values()].map(o => [o.name, oppLine(o), coName(o.co), ctName(S.ct.get(o.ct)), coName(o.ref), oppTerr(o), repName(oppRep(o)), opItems(o).map(it => it.qty + ' x ' + it.type + (it.desc ? ' (' + it.desc + ')' : '') + (it.value != null ? ' $' + it.value : '')).join('; ') || [o.category, o.desc].filter(Boolean).join(': '), o.units, o.value, o.auctionDate, o.commission, o.location, o.stage, o.prob, o.closeDate,
+      (LINE_FIELDS[oppLine(o)] || []).filter(f => o.details && o.details[f.k] != null && o.details[f.k] !== '').map(f => f.label + ': ' + (o.details[f.k] === true ? 'Yes' : o.details[f.k])).join('; '), o.notes, isoToYmd(o.created || ''), isoToYmd(o.updated || '')]) };
+  if (kind === 'tk') return { name: 'matthews-tasks', head: ['Task Name', 'Company', 'Contact', 'Assigned User', 'Due Date', 'Time', 'Location', 'Task Type', 'Appointment Kind', 'Priority', 'Status', 'Notes'],
+    rows: [...S.tk.values()].map(k => [k.name, coName(k.co), ctName(S.ct.get(k.ct)), repName(k.rep), k.due, k.time || '', k.location || '', k.type, k.apptKind || '', k.priority, k.status, k.notes]) };
   if (kind === 'ac') return { name: 'matthews-activities', head: ['Company', 'Contact', 'Activity Type', 'Date / Time', 'User', 'Outcome', 'Notes', 'Next Follow-Up Date'],
     rows: [...S.ac.values()].sort((a, b) => a.at < b.at ? 1 : -1).map(a => [coName(a.co), ctName(S.ct.get(a.ct)), a.type, a.at ? new Date(a.at).toLocaleString() : '', repName(a.by), a.outcome, a.notes, a.nextFU]) };
   return null;

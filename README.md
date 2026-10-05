@@ -39,6 +39,8 @@ One codebase, two builds:
    A rep gets access when they create an account (or accept an invite sent from Supabase →
    Authentication → Users) with that same email. Anyone else who signs up sees nothing.
 
+**Later database updates.** Each new file in `supabase/migrations/` has to be run once, in filename order. While *Deploy to production* is off, paste the new file into the SQL Editor and run it. The files are written to be safe to run twice.
+
 Supabase's built-in email sender is limited to a few messages an hour. That is enough for a
 small team's confirmations and resets; add custom SMTP in Supabase if it becomes a problem.
 
@@ -59,6 +61,8 @@ small team's confirmations and resets; add custom SMTP in Supabase if it becomes
 | `src/core.js` | Option lists, helpers, shared in-memory state, territory matching, derived data, CSV |
 | `src/ui.js` | App state, rendering, dialogs, every screen except import and outreach, exports |
 | `src/import.js` | CSV / Excel import: column matching, match-before-create planning, apply |
+| `src/pipeline.js` | Lines of business (Equipment, Estate, Real Estate), opportunity items and types, the opportunity dialog and Opportunities screen |
+| `src/appointments.js` | Scheduling appointments (stored as tasks with a time, place and kind) |
 | `src/outreach.js` | AI email drafting and the outreach queue |
 | `src/app.js` | Event wiring shared by both builds |
 | `src/store-web.js`, `src/boot-web.js` | Website build: Supabase storage, sign-in, account screen, backup restore |

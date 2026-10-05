@@ -13,7 +13,7 @@ const css = r('style.css'), body = r('body.html');
 
 // --- Claude-hosted build: the publisher wraps this fragment in its own document skeleton.
 out('./dist/matthews-consignment-crm.html',
-  `<title>${TITLE}</title>\n${FONTS}\n<style>\n${css}\n</style>\n${body}<script>\n${js(['core.js', 'store-claude.js', 'ui.js', 'import.js', 'outreach.js', 'app.js', 'boot-claude.js'])}\n</script>\n`);
+  `<title>${TITLE}</title>\n${FONTS}\n<style>\n${css}\n</style>\n${body}<script>\n${js(['core.js', 'store-claude.js', 'ui.js', 'appointments.js', 'pipeline.js', 'import.js', 'outreach.js', 'app.js', 'boot-claude.js'])}\n</script>\n`);
 
 // --- Website build: a complete document. The Supabase project URL and public (anon /
 // publishable) key come from the environment at build time; both are safe to ship to browsers
@@ -42,7 +42,7 @@ ${css}
 ${body}<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>window.__CRM_CONFIG__ = ${JSON.stringify(config).replace(/</g, '\\u003c')};</script>
 <script>
-${js(['core.js', 'store-web.js', 'ui.js', 'import.js', 'outreach.js', 'app.js', 'boot-web.js'])}
+${js(['core.js', 'store-web.js', 'ui.js', 'appointments.js', 'pipeline.js', 'import.js', 'outreach.js', 'app.js', 'boot-web.js'])}
 </script>
 </body>
 </html>

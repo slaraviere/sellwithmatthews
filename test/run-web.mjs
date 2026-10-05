@@ -41,6 +41,7 @@ const CSV_PATH = path.join(OUT, 'prospects-web.csv');
 writeFileSync(CSV_PATH, csv);
 
 const browser = await launch();
+process.on('exit', () => { if (process.exitCode !== 0 && errors.length) console.log('ERRORS SO FAR:\n' + errors.join('\n')); });
 const errors = [];
 async function newPage(user, opts = {}) {
   const ctx = await browser.newContext({ viewport: opts.viewport || { width: 1380, height: 900 } });
@@ -113,17 +114,49 @@ await page.selectOption('#d-status', 'Interested');
 await page.waitForFunction(() => S.tk.size === 1);
 await st(page, `Store._chain`);
 co = await one(`select lead_status, next_follow_up::text as fu, lead_status_at from companies where name like 'Acme%'`);
-const ct = await one(`select * from contacts`), ac = await one(`select * from activities`), tk = await one(`select *, due_date::text as due from tasks`);
+const ct = await one(`select * from contacts`), ac = await one(`select * from activities`), tk = await one(`select *, due_date::text as due from tasks where task_type <> 'Appointment'`);
 const exp = await st(page, `({ fu: addDays(today(), 7), due: addBizDays(today(), 2) })`);
 check('contact, activity and task rows with links and dates', ct.company_id && ct.is_primary === true && ct.email === 'dale@acmeex.example' && ac.activity_type === 'Phone Call' && ac.contact_id === ct.id && ac.logged_by_id === me.id && tk.due === exp.due && tk.assigned_to_id === me.id && tk.auto_source === 'interested', { tk: tk.due });
 check('company follow-up date and status saved', co.fu === exp.fu && co.lead_status === 'Interested' && !!co.lead_status_at, co);
+// --- appointment: new columns on the tasks table
+await page.click('.actions [data-act="ap-new"]');
+await page.selectOption('#f-apptKind', 'Site visit');
+await page.fill('#f-due', '2026-12-01'); await page.fill('#f-time', '09:15');
+await page.click('#dlg-submit');
+await page.waitForFunction(() => [...S.tk.values()].some(k => k.type === 'Appointment'));
+await st(page, `Store._chain`);
+const apRow = await one(`select *, due_date::text as due from tasks where task_type = 'Appointment'`);
+check('appointment row: time, place and kind columns', apRow.due === '2026-12-01' && apRow.due_time === '09:15' && apRow.appointment_kind === 'Site visit' && apRow.location.includes('Christiansburg') && apRow.name === 'Site visit with Acme Excavating LLC', { t: apRow.due_time, loc: apRow.location });
+// a database that has not had the appointments update yet still saves the task
+await queue(() => db.exec(`alter table public.tasks drop column due_time, drop column location, drop column appointment_kind`));
+const coId0 = await st(page, `[...S.co.values()][0].id`);
+await st(page, `Store.add('tk', { id: 'rbehind1', name: 'Phone call with Acme', co: '${coId0}', type: 'Appointment', due: '2026-12-02', time: '11:00', location: '', apptKind: 'Phone call', priority: 'Normal', status: 'Open', notes: '', created: nowIso() }).then(() => 'ok', e => e.code + ' ' + e.message)`).then(r => check('database without the update: task still saves', r === 'ok', r));
+check('...and the rep is told the time was not stored', await st(page, `Store.behind === true`) && (await page.textContent('.toast.err')).includes('database gets its update'));
+await queue(() => db.exec(readFileSync(path.join(ROOT, 'supabase', 'migrations', '20261005200000_appointments.sql'), 'utf8')));
+check('running the update twice is harmless', (await one(`select count(*)::int n from information_schema.columns where table_name = 'tasks' and column_name in ('due_time', 'location', 'appointment_kind')`)).n === 3);
+await queue(() => db.exec(readFileSync(path.join(ROOT, 'supabase', 'migrations', '20261005200000_appointments.sql'), 'utf8')));
+await st(page, `document.querySelectorAll('.toast').forEach(t => t.remove())`);
+
 await st(page, `openOpp(null, [...S.co.values()][0].id)`);
-await page.fill('#f-units', '2'); await page.fill('#f-value', '85000.50'); await page.selectOption('#f-stage', 'Equipment Confirmed'); await page.fill('#f-auctionDate', '2026-11-14');
+await page.selectOption('#op-type-0', 'Excavator'); await page.fill('#op-qty-0', '2'); await page.fill('#op-val-0', '85000.50');
+await page.click('[data-act="op-item-add"]'); await page.selectOption('#op-type-1', 'Building Materials'); await page.fill('#op-desc-1', 'Trusses, one load');
+await page.selectOption('#f-stage', 'Equipment Confirmed'); await page.fill('#f-auctionDate', '2026-11-14');
 await page.click('#dlg-submit');
 await page.waitForFunction(() => S.op.size === 1);
 await st(page, `Store._chain`);
 const op = await one(`select *, auction_date::text as ad from opportunities`);
-check('opportunity row: integer, numeric and date columns', op.estimated_units === 2 && Number(op.estimated_value) === 85000.5 && op.probability === 35 && op.ad === '2026-11-14' && op.expected_close_date === null, { v: op.estimated_value });
+check('opportunity row: items, line and details columns', op.line === 'Equipment' && Array.isArray(op.items) && op.items.length === 2 && op.items[0].type === 'Excavator' && op.items[0].qty === 2 && op.items[1].desc === 'Trusses, one load' && JSON.stringify(op.details) === '{}' && op.referred_by_id === null, op.items);
+const pv = await admin(`select item_type, units::int as units, estimated_value::float as v from pipeline_items order by item_type`);
+check('pipeline_items view counts the same thing in SQL', pv.length === 2 && pv[0].item_type === 'Building Materials' && pv[0].units === 1 && pv[1].item_type === 'Excavator' && pv[1].units === 2 && pv[1].v === 85000.5, pv);
+check('opportunity row: integer, numeric and date columns', op.estimated_units === 3 && Number(op.estimated_value) === 85000.5 && op.probability === 35 && op.ad === '2026-11-14' && op.expected_close_date === null, { v: op.estimated_value });
+
+// --- estate line: company lines, details, referred-by and a custom item type
+await st(page, `Store.add('co', { id: 'rlaw00001', name: 'Hale & Finch Law', city: 'Radford', state: 'VA', terr: 'NRV', terrHow: 'City', industry: 'Attorney / Law Firm', lines: ['Estate', 'Real Estate'], status: 'New', assets: [], attemptsBase: 0, created: nowIso(), updated: nowIso() })`);
+await st(page, `addItemType('Rock Truck', 'Equipment')`);
+await st(page, `Store.add('op', { id: 'rest00001', name: 'Carter estate', line: 'Estate', co: 'rlaw00001', ref: 'rlaw00001', stage: 'Walk-Through Scheduled', prob: 25, items: [{ type: 'Firearms', qty: 12 }, { type: 'Household Contents', qty: 1 }], units: 13, value: null, details: { owner: 'Ruth Carter', authority: 'Executor', hasRE: true }, created: nowIso(), updated: nowIso() })`);
+const lawRow = await one(`select lines from companies where id = 'rlaw00001'`), estRow = await one(`select * from opportunities where id = 'rest00001'`), typesRow = await one(`select value from settings where key = 'outreach'`);
+check('estate rows: lines array, details, referred-by link, custom type saved', JSON.stringify(lawRow.lines) === '["Estate","Real Estate"]' && estRow.line === 'Estate' && estRow.details.owner === 'Ruth Carter' && estRow.details.hasRE === true && estRow.referred_by_id === 'rlaw00001' && estRow.items.length === 2 && typesRow.value.types.list[0].name === 'Rock Truck', { lines: lawRow.lines, details: estRow.details });
+await st(page, `Promise.all([Store.remove('op', 'rest00001')]).then(() => Store.remove('co', 'rlaw00001'))`);
 
 // --- import (bulk insert, a matched update, a new name-only rep)
 await page.click('#tabs [data-tab="import"]');
@@ -221,7 +254,7 @@ await page2.waitForFunction(() => typeof S !== 'undefined' && S.ready, null, { t
 const after = JSON.parse(await st(page2, snap()));
 const norm = o => JSON.parse(JSON.stringify(o, (k, v) => (k === 'created' || k === 'updated' || k === 'at' || k === 'statusAt') && typeof v === 'string' ? v.slice(0, 19) : v));
 const diff = [];
-for (const k of ['co', 'ct', 'ac', 'dr']) { const a = norm(before[k]), b = norm(after[k]); if (a.length !== b.length) diff.push(k + ' count ' + a.length + ' vs ' + b.length); a.forEach((r, i) => { for (const f of new Set([...Object.keys(r), ...Object.keys(b[i] || {})])) { const x = r[f], y = (b[i] || {})[f]; if (JSON.stringify(x == null || x === false ? '' : x) !== JSON.stringify(y == null || y === false ? '' : y)) diff.push(k + '.' + f + ': ' + JSON.stringify(x) + ' vs ' + JSON.stringify(y)); } }); }
+for (const k of ['co', 'ct', 'ac', 'dr']) { const a = norm(before[k]), b = norm(after[k]); if (a.length !== b.length) diff.push(k + ' count ' + a.length + ' vs ' + b.length); a.forEach((r, i) => { for (const f of new Set([...Object.keys(r), ...Object.keys(b[i] || {})])) { const x = r[f], y = (b[i] || {})[f]; const nz = v => (v == null || v === false || (Array.isArray(v) && !v.length)) ? '' : v; if (JSON.stringify(nz(x)) !== JSON.stringify(nz(y))) diff.push(k + '.' + f + ': ' + JSON.stringify(x) + ' vs ' + JSON.stringify(y)); } }); }
 check('reload returns the same records the screens were showing', diff.length === 0 && after.co.length === 4 && Object.keys(after.terr).length === 7 && after.out.main.gap === 5, diff.slice(0, 6));
 await page2.screenshot({ path: path.join(OUT, 'web-dashboard.png'), fullPage: true });
 

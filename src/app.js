@@ -23,10 +23,10 @@ const ACTIONS = {
   'more': t => { V[t.dataset.scope].limit += 100; renderNow(); },
   'go-view': t => { V.co = Object.assign({}, CO_FILTER0, V.tab === 'dashboard' ? V.dash : {}, { view: t.dataset.view }); if (['fu-today', 'fu-over', 'followup'].includes(t.dataset.view)) { V.co.sort = 'nextFU'; } go('companies'); },
   'go-tasks': t => { V.tk.tab = t.dataset.tk; V.tk.rep = V.dash.rep; go('tasks'); },
-  'go-opps': () => { V.op = { stage: 'open', terr: V.dash.terr, rep: V.dash.rep === 'none' ? '' : V.dash.rep, q: '' }; go('opportunities'); },
+  'go-opps': () => { V.op = { stage: 'open', line: V.dash.line, type: '', terr: V.dash.terr, rep: V.dash.rep === 'none' ? '' : V.dash.rep, q: '' }; go('opportunities'); },
   'go-acts': t => { V.ac = { type: t.dataset.type, rep: V.dash.rep === 'none' ? '' : V.dash.rep, range: 'week', limit: 100 }; go('activity'); },
   'dash-me': () => { V.dash.rep = V.dash.rep === ME ? '' : ME; renderNow(); },
-  'dash-clear': () => { V.dash = { terr: '', rep: '', industry: '', asset: '', priority: '', status: '' }; renderNow(); },
+  'dash-clear': () => { V.dash = { line: '', terr: '', rep: '', industry: '', asset: '', priority: '', status: '' }; renderNow(); },
   'tk-me': () => { V.tk.rep = V.tk.rep === ME ? '' : ME; renderNow(); },
   'tk-tab': t => { V.tk.tab = t.dataset.tk; renderNow(); },
   'log': t => openActivity(t.dataset.id, t.dataset.type, null, t.dataset.ct || ''),
@@ -38,6 +38,7 @@ const ACTIONS = {
   'op-open': t => openOpp(t.dataset.id),
   'tk-new': t => openTask(null, t.dataset.id || ''),
   'tk-open': t => openTask(t.dataset.id),
+  'ap-new': t => openAppt(null, t.dataset.id || ''),
   'tk-snooze': t => guard(async () => { const k = S.tk.get(t.dataset.id); if (!k) return; const from = (k.due && k.due > today()) ? k.due : today(); const due = addDays(from, Number(t.dataset.days)); toast('Snoozed to ' + fmtDate(due) + '.'); await Store.patch('tk', k.id, { due, status: 'Snoozed' }); }),
   'terr-new': () => openTerritory(),
   'terr-open': t => openTerritory(t.dataset.id),
@@ -115,7 +116,7 @@ function selectText(btn) {
 
 const CHANGES = {
   'filter': t => { V[t.dataset.scope][t.dataset.key] = t.value; if ('limit' in V[t.dataset.scope]) V[t.dataset.scope].limit = 100; renderNow(); },
-  'tk-done': t => guard(async () => { const done = t.checked; toast(done ? 'Task completed.' : 'Task reopened.'); await Store.patch('tk', t.dataset.id, done ? { status: 'Completed', doneAt: nowIso() } : { status: 'Open', doneAt: '' }); }),
+  'tk-done': t => guard(async () => { const done = t.checked; const k = S.tk.get(t.dataset.id); if (done && isAppt(k)) toast('Appointment marked done.', { action: 'Log how it went', onAction: () => openActivity(k.co || '', APPT_ACTIVITY[k.apptKind] || 'Meeting', null, k.ct || '') }); else toast(done ? 'Task completed.' : 'Task reopened.'); await Store.patch('tk', t.dataset.id, done ? { status: 'Completed', doneAt: nowIso() } : { status: 'Open', doneAt: '' }); }),
   'co-set': t => guard(() => Store.patch('co', t.dataset.id, { [t.dataset.key]: t.value, updated: nowIso() })),
   'co-status': t => guard(() => changeStatus(S.co.get(t.dataset.id), t.value)),
   'terr-set': t => { if (!t.value) return; guard(async () => { toast('Territory set to ' + t.value + '.'); await Store.patch('co', t.dataset.id, { terr: t.value, terrHow: 'Manual', updated: nowIso() }); }); },
@@ -168,6 +169,8 @@ function wire() {
     const t = e.target;
     if (t.id === 'gsearch') return runSearch(t.value);
     if (t.dataset && t.dataset.input && INPUTS[t.dataset.input]) INPUTS[t.dataset.input](t, e);
+    if (t.id === 'f-apptKind') apptKindChanged();
+    if (t.id === 'f-line' && _op) return opLineChanged();
     if (t.id === 'f-stage') { const p = $('#f-prob'); if (p && STAGE_PROB[t.value] != null) p.value = STAGE_PROB[t.value]; }
   });
   document.addEventListener('submit', e => {
@@ -179,7 +182,8 @@ function wire() {
       guard(() => setMe(pick, pick ? '' : name));
     }
   });
-  $('#dlg').addEventListener('close', () => { const d = $('#dlg'); d.innerHTML = ''; d._submit = null; });
+  /* The close event arrives a moment after close(); by then another dialog may already be open, so only clear a closed one. */
+  $('#dlg').addEventListener('close', () => { const d = $('#dlg'); if (!d.open) { d.innerHTML = ''; d._submit = null; } });
   $('#gsearch').addEventListener('keydown', e => { if (e.key === 'Escape') { e.target.value = ''; runSearch(''); } if (e.key === 'Enter') { const b = $('#gresults button'); if (b) b.click(); } });
   $('#gsearch').addEventListener('focus', e => runSearch(e.target.value));
 }
@@ -189,5 +193,6 @@ function startShell() {
   const h = (location.hash || '').slice(1);
   if (TABS.some(t => t[0] === h)) V.tab = h;
   wire();
+  wirePipeline();
   render();
 }
