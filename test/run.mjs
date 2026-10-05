@@ -259,6 +259,22 @@ await st(page, `Store.patch('co', [...S.co.values()][0].id, { leadType: 'x' })`)
 await page.waitForTimeout(400);
 check('typing in a draft survives other changes', (await page.locator('#main .draft textarea').first().inputValue()).includes('typed while others change'));
 await page.screenshot({ path: path.join(OUT, 'shot-outreach.png'), fullPage: true });
+// --- Gmail draft
+await page.locator('#main .draft textarea').first().evaluate(el => el.blur());
+await page.waitForTimeout(250);
+const firstDraft = await st(page, `document.querySelector('#main .draft').id.slice(3)`);
+await page.click('#dr-' + firstDraft + ' [data-act="dr-gmail"]');
+await page.waitForFunction(id => !!S.dr.get(id).gmailAt, firstDraft);
+const call = await st(page, `window.__mcpCalls[0]`);
+check('Gmail draft: one create_draft call with recipient, subject and edited body', call.server === 'Gmail' && call.tool === 'create_draft' && Array.isArray(call.input.to) && call.input.to.length === 1 && /@/.test(call.input.to[0]) && !!call.input.subject && call.input.body.includes('typed while others change') && (await st(page, `window.__mcpCalls.length`)) === 1, call.input);
+await page.waitForTimeout(200);
+check('Gmail draft: card shows it is in Gmail with a link', await page.locator('#dr-' + firstDraft + ' .draft-gmail a').count() === 1);
+await st(page, `window.__mcpFail = 'server_not_connected'`);
+await page.locator('#main .draft [data-act="dr-gmail"]').nth(1).click();
+await page.waitForSelector('.toast.err');
+check('Gmail not connected: says how to connect, nothing marked', (await page.textContent('.toast.err')).includes('Connectors') && await st(page, `[...S.dr.values()].filter(d => d.gmailAt).length === 1`));
+await st(page, `window.__mcpFail = ''; document.querySelectorAll('.toast').forEach(t => t.remove())`);
+await page.screenshot({ path: path.join(OUT, 'shot-gmail.png'), fullPage: true });
 await page.click('[data-act="out-cfg"]');
 await page.fill('#out-sig', 'Stephen\nMatthews Auctioneers');
 await page.fill('#out-gap', '5');

@@ -1,7 +1,7 @@
 /* ============================================================
    App state, rendering, dialogs
    ============================================================ */
-const CAP = { db: null, user: null, downloads: null, sample: null, uid: null, canWrite: true, checked: false };
+const CAP = { db: null, user: null, downloads: null, sample: null, mcp: null, uid: null, canWrite: true, checked: false };
 let ME = null;
 const CO_FILTER0 = { q: '', terr: '', rep: '', industry: '', asset: '', priority: '', status: '', view: 'all', sort: 'name', dir: 1, limit: 100 };
 const V = {

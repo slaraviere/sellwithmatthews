@@ -69,6 +69,7 @@ const ACTIONS = {
   'dr-batch': () => { runBatch(); },
   'dr-stop': () => { if (V.out.run) V.out.run.stop = true; if (_outCtl) _outCtl.abort(); },
   'dr-sent': t => guard(() => markDraftSent(t.dataset.id)),
+  'dr-gmail': t => { gmailDraft(t.dataset.id, t); },
   'dr-redo': t => guard(() => redraft(t.dataset.id)),
   'dr-skip': t => {
     if (t.dataset.armed !== '1') { t.dataset.armed = '1'; t.textContent = 'Click again to discard'; return; }
@@ -236,8 +237,9 @@ async function boot() {
   const c = window.claude;
   if (c && typeof c.use === 'function') {
     const safe = name => Promise.resolve().then(() => c.use(name)).catch(() => null);
-    const [db, user, downloads, sample] = await Promise.all([safe('db'), safe('user'), safe('downloads'), safe('sample')]);
+    const [db, user, downloads, sample, mcp] = await Promise.all([safe('db'), safe('user'), safe('downloads'), safe('sample'), safe('mcp')]);
     CAP.db = db; CAP.user = user; CAP.downloads = downloads; CAP.sample = typeof sample === 'function' ? sample : null;
+    CAP.mcp = mcp && typeof mcp.callTool === 'function' ? mcp : null;
     if (user) {
       try { CAP.uid = await user.id(); } catch (e) { /* no identity in this view */ }
       try { if ((await user.can('data.write')) === false) CAP.canWrite = false; } catch (e) { /* let a refused write decide */ }

@@ -61,6 +61,15 @@
     const m = input.match(/<prospects>(.*)<\/prospects>/s);
     return JSON.parse(m[1]).map(p => ({ id: p.id, subject: 'Equipment at ' + p.company, body: 'Hi ' + (p.contact_first_name || 'there') + ',\n\nBody for ' + p.company + '.\n\nStephen' }));
   };
+  window.__mcpCalls = [];
+  const mcp = {
+    callTool: async (server, tool, input, options) => {
+      window.__mcpCalls.push({ server, tool, input, options });
+      await new Promise(r => setTimeout(r, 25));
+      if (window.__mcpFail) throw { code: window.__mcpFail, message: 'x', server };
+      return { content: [], payload: { id: 'd1', threadId: 't1', viewUrl: 'https://mail.google.com/mail/u/0/#drafts?compose=abc' } };
+    },
+  };
   window.__docs = docs;
-  window.claude = { use: name => new Promise(res => setTimeout(() => res({ db, user, downloads, sample }[name] || null), 30)) };
+  window.claude = { use: name => new Promise(res => setTimeout(() => res({ db, user, downloads, sample, mcp }[name] || null), 30)) };
 })();

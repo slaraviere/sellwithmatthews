@@ -31,7 +31,7 @@ npm test        # builds, then runs the browser test; screenshots land in test/o
 ## Where it runs today
 
 The built page is published as a Claude artifact. It depends on the platform through
-`window.claude.use(...)` in four places only:
+`window.claude.use(...)` in five places only:
 
 | Capability | Used for | Where |
 |---|---|---|
@@ -39,6 +39,7 @@ The built page is published as a Claude artifact. It depends on the platform thr
 | `user` | Recognizing the signed-in rep, read-only detection | `boot()` / `identify()` in `src/app.js` |
 | `downloads` | CSV and backup exports | `saveFile()` in `src/ui.js` |
 | `sample` | AI email drafts | `aiDraftOne()` / `aiDraftMany()` in `src/outreach.js` |
+| `mcp` (Gmail `create_draft`) | Putting a reviewed draft into the rep's Gmail drafts | `gmailDraft()` in `src/outreach.js` |
 
 Records are stored in block documents (`{items: {id: record}}`, about 80 records each)
 in the collections `co`, `ct`, `ac`, `tk`, `op`, `dr`, plus settings in `cfg/territories`,
@@ -51,7 +52,7 @@ in the collections `co`, `ct`, `ac`, `tk`, `op`, `dr`, plus settings in `cfg/ter
   `init`, `addMany`, `patchMany`, `remove`, `cfgPatch`, and an `onChange` callback.
 - Replace the "who are you" prompt with Supabase Auth and map each user to a team record.
 - Replace `saveFile()` with ordinary browser downloads.
-- Replace the two `CAP.sample` calls with a server route that calls the Claude API, and add
-  an email-sending service if drafts should be sent from the app.
+- Replace the two `CAP.sample` calls with a server route that calls the Claude API. Replace
+  `gmailDraft()` with the Gmail API (OAuth per rep) or an email-sending service.
 - Load data from the CRM's full backup export (Import / Export → Full backup).
 - Vercel can serve `dist/` as a static site; no framework is required.

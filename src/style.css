@@ -321,3 +321,5 @@ dialog::backdrop { background: rgba(5, 8, 12, .55); }
 .draft a.btn { text-decoration: none; color: var(--ink); }
 .stream { background: var(--surface-2); border-radius: var(--r); padding: 12px 14px; max-height: 260px; overflow-y: auto; }
 .filters #flt-out-src { max-width: 340px; }
+.draft-gmail { background: var(--good-soft); color: var(--good-ink); border-radius: var(--r); padding: 6px 10px; font-size: 14px; }
+.draft-gmail a { color: inherit; font-weight: 600; }
