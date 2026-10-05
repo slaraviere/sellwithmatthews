@@ -324,6 +324,18 @@ dialog::backdrop { background: rgba(5, 8, 12, .55); }
 .draft a.btn { text-decoration: none; color: var(--ink); }
 .stream { background: var(--surface-2); border-radius: var(--r); padding: 12px 14px; max-height: 260px; overflow-y: auto; }
 .filters #flt-out-src { max-width: 340px; }
+.draft-gmail { background: var(--good-soft); color: var(--good-ink); border-radius: var(--r); padding: 6px 10px; font-size: 14px; }
+.draft-gmail a { color: inherit; font-weight: 600; }
+
+/* ---- website build: sign-in gate ---- */
+body.anon .bar .search, body.anon .bar-in > .btn, body.anon .tabs, body.anon #me-chip { display: none !important; }
+.gate { display: flex; justify-content: center; padding-block: clamp(16px, 8vh, 80px); }
+.gate-card { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--brand-red); border-radius: var(--r); padding: 26px 28px; width: min(440px, 100%); display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow); }
+.gate-form { display: flex; flex-direction: column; gap: 12px; }
+.gate-links { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.gate-ok { background: var(--good-soft); color: var(--good-ink); border-radius: var(--r); padding: 9px 12px; }
+.gate-card code { background: var(--surface-2); border-radius: 3px; padding: 1px 5px; font-size: 13px; }
+input[type=password] { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 10px; max-width: 100%; min-width: 0; }
 
 </style>
 <header class="bar">
@@ -489,19 +501,173 @@ function safeUrl(u) {
 const truthy = v => /^(y|yes|true|1|x|checked|opt.?out|unsubscribed|dnc)$/i.test(clean(v));
 
 /* ============================================================
-   Storage. Records live in "block" documents ({items: {id: record}}) so a
-   prospect list of several thousand companies is a few dozen documents,
-   a bulk import is a handful of writes, and edits merge field by field.
+   In-memory state shared by every screen. The Store that fills it lives in
+   store-claude.js (Claude-hosted build) or store-web.js (Supabase build).
    ============================================================ */
 const KINDS = ['co', 'ct', 'ac', 'tk', 'op', 'dr'];
 const KIND_LABEL = { co: 'companies', ct: 'contacts', ac: 'activities', tk: 'tasks', op: 'opportunities', dr: 'emailDrafts' };
-const MAX_N = 80, MAX_B = 100000;
 
 const S = {
   co: new Map(), ct: new Map(), ac: new Map(), tk: new Map(), op: new Map(), dr: new Map(),
   terr: {}, team: {}, outreach: {},
   loaded: {}, ready: false, ver: 0, cfgVer: 0, dbState: 'connecting',
 };
+/* ============================================================
+   Territory assignment — one table, matched ZIP → city+state → county+state.
+   ============================================================ */
+let _terrIx = null, _terrIxVer = -1;
+function parsePlace(s, fallbackState) {
+  s = clean(s);
+  if (!s) return null;
+  const i = s.lastIndexOf(',');
+  let name = s, st = '';
+  if (i > 0) { name = s.slice(0, i); st = normState(s.slice(i + 1)); }
+  if (!st) st = normState(fallbackState);
+  return st ? { name, st } : null;
+}
+function terrIndex() {
+  if (_terrIx && _terrIxVer === S.cfgVer) return _terrIx;
+  const ix = { zips: new Map(), cities: new Map(), counties: new Map() };
+  const put = (m, key, code) => { if (!m.has(key)) m.set(key, new Set()); m.get(key).add(code); };
+  for (const code in S.terr) {
+    const t = S.terr[code];
+    if (t.active === false) continue;
+    for (const z of t.zips || []) { const z5 = zip5(z); if (z5) put(ix.zips, z5, code); }
+    for (const c of t.cities || []) { const p = parsePlace(c, t.state); if (p) put(ix.cities, normCity(p.name) + '|' + p.st, code); }
+    for (const c of t.counties || []) { const p = parsePlace(c, t.state); if (p) put(ix.counties, normCounty(p.name) + '|' + p.st, code); }
+  }
+  _terrIx = ix; _terrIxVer = S.cfgVer;
+  return ix;
+}
+function assignTerritory(c) {
+  const ix = terrIndex();
+  const one = set => (set && set.size === 1) ? [...set][0] : null;
+  const z = zip5(c.zip);
+  if (z) { const p = one(ix.zips.get(z)); if (p) return { code: p, how: 'ZIP' }; }
+  const st = normState(c.state);
+  if (st) {
+    if (clean(c.city)) { const p = one(ix.cities.get(normCity(c.city) + '|' + st)); if (p) return { code: p, how: 'City' }; }
+    if (clean(c.county)) { const p = one(ix.counties.get(normCounty(c.county) + '|' + st)); if (p) return { code: p, how: 'County' }; }
+  }
+  return { code: UNASSIGNED, how: (!st && (clean(c.city) || clean(c.county))) ? 'State missing' : 'No match' };
+}
+const terrName = code => code === UNASSIGNED ? 'Unassigned' : ((S.terr[code] && S.terr[code].name) || code || '');
+const terrCodes = (activeOnly) => Object.keys(S.terr).filter(c => !activeOnly || S.terr[c].active !== false).sort();
+const repName = id => (id && S.team[id] && S.team[id].name) || '';
+const repList = (activeOnly) => Object.keys(S.team).filter(id => !activeOnly || S.team[id].active !== false)
+  .sort((a, b) => S.team[a].name.localeCompare(S.team[b].name));
+
+/* ============================================================
+   Derived data — rebuilt once per data change, read by every screen.
+   Last contact, contact method and outreach attempts are computed from
+   the activity log (plus any imported starting values), so they can't drift.
+   ============================================================ */
+const D = { ver: -1 };
+function derive() {
+  if (D.ver === S.ver) return D;
+  const actByCo = new Map(), actByCt = new Map(), stats = new Map();
+  for (const a of S.ac.values()) {
+    if (a.co) { if (!actByCo.has(a.co)) actByCo.set(a.co, []); actByCo.get(a.co).push(a); }
+    if (a.ct) { if (!actByCt.has(a.ct)) actByCt.set(a.ct, []); actByCt.get(a.ct).push(a); }
+    const m = ACT_META[a.type] || {};
+    if (a.co && (m.contact || m.attempt)) {
+      let st = stats.get(a.co);
+      if (!st) { st = { last: '', lastAt: '', method: '', attempts: 0 }; stats.set(a.co, st); }
+      if (m.attempt) st.attempts++;
+      const stamp = a.at + '|' + (a.created || '');
+      if (m.contact && stamp > st.lastAt) { st.lastAt = stamp; st.last = isoToYmd(a.at); st.method = m.method || ''; }
+    }
+  }
+  const byAt = (x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0);
+  for (const l of actByCo.values()) l.sort(byAt);
+  for (const l of actByCt.values()) l.sort(byAt);
+  const group = (map, key) => { const out = new Map(); for (const r of map.values()) { const v = r[key]; if (!v) continue; if (!out.has(v)) out.set(v, []); out.get(v).push(r); } return out; };
+  D.actByCo = actByCo; D.actByCt = actByCt; D.stats = stats;
+  D.ctByCo = group(S.ct, 'co'); D.tkByCo = group(S.tk, 'co'); D.opByCo = group(S.op, 'co');
+  D.dups = findDuplicates();
+  D.dupIds = new Set(); for (const g of D.dups) for (const id of g.ids) D.dupIds.add(id);
+  D.ver = S.ver;
+  return D;
+}
+function coInfo(c) {
+  const st = derive().stats.get(c.id);
+  const base = c.lastContactBase || '';
+  let last = base, method = c.lastMethodBase || '';
+  if (st && st.last && st.last >= base) { last = st.last; method = st.method; }
+  return { last, method, attempts: (Number(c.attemptsBase) || 0) + (st ? st.attempts : 0) };
+}
+const isDormant = (c, info) => !!info.last && daysBetween(info.last, today()) > DORMANT_DAYS && !DEAD_STATUSES.includes(c.status);
+function primaryContact(coId) {
+  const l = derive().ctByCo.get(coId) || [];
+  return l.find(x => x.primary) || l[0] || null;
+}
+const ctName = c => c ? (clean((c.first || '') + ' ' + (c.last || '')) || c.email || '(No name)') : '';
+const coName = id => { const c = S.co.get(id); return c ? c.name : ''; };
+
+/* Likely duplicates: same normalized name in the same state, same website, or same phone. */
+function findDuplicates() {
+  const parent = new Map();
+  const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent.set(a, b); };
+  const keys = new Map(), why = new Map();
+  const note = (key, id, label) => {
+    if (keys.has(key)) { const other = keys.get(key); union(id, other); why.set(id, label); if (!why.has(other)) why.set(other, label); }
+    else keys.set(key, id);
+  };
+  for (const c of S.co.values()) parent.set(c.id, c.id);
+  for (const c of S.co.values()) {
+    const n = normName(c.name);
+    if (n.length >= 3) note('n:' + n + '|' + normState(c.state), c.id, 'Same name');
+    const d = matchDomain(c.web); if (d) note('d:' + d, c.id, 'Same website');
+    const p = normPhone(c.phone); if (p) note('p:' + p, c.id, 'Same phone');
+  }
+  const groups = new Map();
+  for (const id of parent.keys()) { const r = find(id); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(id); }
+  const out = [];
+  for (const ids of groups.values()) {
+    if (ids.length < 2) continue;
+    ids.sort();
+    const sig = ids.join('+');
+    if (ids.every(id => S.co.get(id).dupOk === sig)) continue;
+    out.push({ ids, sig, why: [...new Set(ids.map(id => why.get(id)).filter(Boolean))].join(', ') });
+  }
+  return out;
+}
+
+/* ---------- CSV ---------- */
+function parseCSV(text) {
+  const rows = []; let row = [], cur = '', q = false;
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const first = text.split(/\r?\n/, 1)[0] || '';
+  const delim = (first.split('\t').length > first.split(',').length) ? '\t' : ((first.split(';').length > first.split(',').length) ? ';' : ',');
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === delim) { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cur); cur = ''; rows.push(row); row = [];
+    } else cur += ch;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter(r => r.some(c => clean(c) !== ''));
+}
+function toCSV(header, rows) {
+  const cell = v => { v = v == null ? '' : String(v); if (/^(=|@|\t|\r|[+\-](?![\d\s(.]))/.test(v)) v = "'" + v; return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  return '﻿' + [header, ...rows].map(r => r.map(cell).join(',')).join('\r\n') + '\r\n';
+}
+
+/* ============================================================
+   Storage for the Claude-hosted build. Records live in "block" documents
+   ({items: {id: record}}) so a prospect list of several thousand companies is a
+   few dozen documents, a bulk import is a handful of writes, and edits merge
+   field by field.
+   ============================================================ */
+const PLATFORM = 'claude';
+const MAX_N = 80, MAX_B = 100000;
 const Store = {
   db: null,
   where: { co: new Map(), ct: new Map(), ac: new Map(), tk: new Map(), op: new Map(), dr: new Map() },
@@ -673,157 +839,9 @@ const Store = {
 };
 
 /* ============================================================
-   Territory assignment — one table, matched ZIP → city+state → county+state.
-   ============================================================ */
-let _terrIx = null, _terrIxVer = -1;
-function parsePlace(s, fallbackState) {
-  s = clean(s);
-  if (!s) return null;
-  const i = s.lastIndexOf(',');
-  let name = s, st = '';
-  if (i > 0) { name = s.slice(0, i); st = normState(s.slice(i + 1)); }
-  if (!st) st = normState(fallbackState);
-  return st ? { name, st } : null;
-}
-function terrIndex() {
-  if (_terrIx && _terrIxVer === S.cfgVer) return _terrIx;
-  const ix = { zips: new Map(), cities: new Map(), counties: new Map() };
-  const put = (m, key, code) => { if (!m.has(key)) m.set(key, new Set()); m.get(key).add(code); };
-  for (const code in S.terr) {
-    const t = S.terr[code];
-    if (t.active === false) continue;
-    for (const z of t.zips || []) { const z5 = zip5(z); if (z5) put(ix.zips, z5, code); }
-    for (const c of t.cities || []) { const p = parsePlace(c, t.state); if (p) put(ix.cities, normCity(p.name) + '|' + p.st, code); }
-    for (const c of t.counties || []) { const p = parsePlace(c, t.state); if (p) put(ix.counties, normCounty(p.name) + '|' + p.st, code); }
-  }
-  _terrIx = ix; _terrIxVer = S.cfgVer;
-  return ix;
-}
-function assignTerritory(c) {
-  const ix = terrIndex();
-  const one = set => (set && set.size === 1) ? [...set][0] : null;
-  const z = zip5(c.zip);
-  if (z) { const p = one(ix.zips.get(z)); if (p) return { code: p, how: 'ZIP' }; }
-  const st = normState(c.state);
-  if (st) {
-    if (clean(c.city)) { const p = one(ix.cities.get(normCity(c.city) + '|' + st)); if (p) return { code: p, how: 'City' }; }
-    if (clean(c.county)) { const p = one(ix.counties.get(normCounty(c.county) + '|' + st)); if (p) return { code: p, how: 'County' }; }
-  }
-  return { code: UNASSIGNED, how: (!st && (clean(c.city) || clean(c.county))) ? 'State missing' : 'No match' };
-}
-const terrName = code => code === UNASSIGNED ? 'Unassigned' : ((S.terr[code] && S.terr[code].name) || code || '');
-const terrCodes = (activeOnly) => Object.keys(S.terr).filter(c => !activeOnly || S.terr[c].active !== false).sort();
-const repName = id => (id && S.team[id] && S.team[id].name) || '';
-const repList = (activeOnly) => Object.keys(S.team).filter(id => !activeOnly || S.team[id].active !== false)
-  .sort((a, b) => S.team[a].name.localeCompare(S.team[b].name));
-
-/* ============================================================
-   Derived data — rebuilt once per data change, read by every screen.
-   Last contact, contact method and outreach attempts are computed from
-   the activity log (plus any imported starting values), so they can't drift.
-   ============================================================ */
-const D = { ver: -1 };
-function derive() {
-  if (D.ver === S.ver) return D;
-  const actByCo = new Map(), actByCt = new Map(), stats = new Map();
-  for (const a of S.ac.values()) {
-    if (a.co) { if (!actByCo.has(a.co)) actByCo.set(a.co, []); actByCo.get(a.co).push(a); }
-    if (a.ct) { if (!actByCt.has(a.ct)) actByCt.set(a.ct, []); actByCt.get(a.ct).push(a); }
-    const m = ACT_META[a.type] || {};
-    if (a.co && (m.contact || m.attempt)) {
-      let st = stats.get(a.co);
-      if (!st) { st = { last: '', lastAt: '', method: '', attempts: 0 }; stats.set(a.co, st); }
-      if (m.attempt) st.attempts++;
-      const stamp = a.at + '|' + (a.created || '');
-      if (m.contact && stamp > st.lastAt) { st.lastAt = stamp; st.last = isoToYmd(a.at); st.method = m.method || ''; }
-    }
-  }
-  const byAt = (x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0);
-  for (const l of actByCo.values()) l.sort(byAt);
-  for (const l of actByCt.values()) l.sort(byAt);
-  const group = (map, key) => { const out = new Map(); for (const r of map.values()) { const v = r[key]; if (!v) continue; if (!out.has(v)) out.set(v, []); out.get(v).push(r); } return out; };
-  D.actByCo = actByCo; D.actByCt = actByCt; D.stats = stats;
-  D.ctByCo = group(S.ct, 'co'); D.tkByCo = group(S.tk, 'co'); D.opByCo = group(S.op, 'co');
-  D.dups = findDuplicates();
-  D.dupIds = new Set(); for (const g of D.dups) for (const id of g.ids) D.dupIds.add(id);
-  D.ver = S.ver;
-  return D;
-}
-function coInfo(c) {
-  const st = derive().stats.get(c.id);
-  const base = c.lastContactBase || '';
-  let last = base, method = c.lastMethodBase || '';
-  if (st && st.last && st.last >= base) { last = st.last; method = st.method; }
-  return { last, method, attempts: (Number(c.attemptsBase) || 0) + (st ? st.attempts : 0) };
-}
-const isDormant = (c, info) => !!info.last && daysBetween(info.last, today()) > DORMANT_DAYS && !DEAD_STATUSES.includes(c.status);
-function primaryContact(coId) {
-  const l = derive().ctByCo.get(coId) || [];
-  return l.find(x => x.primary) || l[0] || null;
-}
-const ctName = c => c ? (clean((c.first || '') + ' ' + (c.last || '')) || c.email || '(No name)') : '';
-const coName = id => { const c = S.co.get(id); return c ? c.name : ''; };
-
-/* Likely duplicates: same normalized name in the same state, same website, or same phone. */
-function findDuplicates() {
-  const parent = new Map();
-  const find = x => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
-  const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent.set(a, b); };
-  const keys = new Map(), why = new Map();
-  const note = (key, id, label) => {
-    if (keys.has(key)) { const other = keys.get(key); union(id, other); why.set(id, label); if (!why.has(other)) why.set(other, label); }
-    else keys.set(key, id);
-  };
-  for (const c of S.co.values()) parent.set(c.id, c.id);
-  for (const c of S.co.values()) {
-    const n = normName(c.name);
-    if (n.length >= 3) note('n:' + n + '|' + normState(c.state), c.id, 'Same name');
-    const d = matchDomain(c.web); if (d) note('d:' + d, c.id, 'Same website');
-    const p = normPhone(c.phone); if (p) note('p:' + p, c.id, 'Same phone');
-  }
-  const groups = new Map();
-  for (const id of parent.keys()) { const r = find(id); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(id); }
-  const out = [];
-  for (const ids of groups.values()) {
-    if (ids.length < 2) continue;
-    ids.sort();
-    const sig = ids.join('+');
-    if (ids.every(id => S.co.get(id).dupOk === sig)) continue;
-    out.push({ ids, sig, why: [...new Set(ids.map(id => why.get(id)).filter(Boolean))].join(', ') });
-  }
-  return out;
-}
-
-/* ---------- CSV ---------- */
-function parseCSV(text) {
-  const rows = []; let row = [], cur = '', q = false;
-  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-  const first = text.split(/\r?\n/, 1)[0] || '';
-  const delim = (first.split('\t').length > first.split(',').length) ? '\t' : ((first.split(';').length > first.split(',').length) ? ';' : ',');
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (q) {
-      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; }
-      else cur += ch;
-    } else if (ch === '"') q = true;
-    else if (ch === delim) { row.push(cur); cur = ''; }
-    else if (ch === '\n' || ch === '\r') {
-      if (ch === '\r' && text[i + 1] === '\n') i++;
-      row.push(cur); cur = ''; rows.push(row); row = [];
-    } else cur += ch;
-  }
-  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
-  return rows.filter(r => r.some(c => clean(c) !== ''));
-}
-function toCSV(header, rows) {
-  const cell = v => { v = v == null ? '' : String(v); if (/^(=|@|\t|\r|[+\-](?![\d\s(.]))/.test(v)) v = "'" + v; return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  return '﻿' + [header, ...rows].map(r => r.map(cell).join(',')).join('\r\n') + '\r\n';
-}
-
-/* ============================================================
    App state, rendering, dialogs
    ============================================================ */
-const CAP = { db: null, user: null, downloads: null, sample: null, uid: null, canWrite: true, checked: false };
+const CAP = { db: null, user: null, downloads: null, sample: null, mcp: null, uid: null, canWrite: true, isAdmin: false, checked: false };
 let ME = null;
 const CO_FILTER0 = { q: '', terr: '', rep: '', industry: '', asset: '', priority: '', status: '', view: 'all', sort: 'name', dir: 1, limit: 100 };
 const V = {
@@ -946,7 +964,7 @@ function render() {
   }
 }
 const loadingHtml = msg => `<div class="empty"><div class="spin" aria-hidden="true"></div><p>${esc(msg)}</p></div>`;
-const noDbHtml = () => `<div class="empty"><h2>The CRM database isn't available in this view</h2><p>Open this page from Claude while signed in to your Matthews Auctioneers account. Companies, contacts and activity load from the shared database once you're signed in.</p></div>`;
+const noDbHtml = () => PLATFORM === 'web' ? webGateHtml() : `<div class="empty"><h2>The CRM database isn't available in this view</h2><p>Open this page from Claude while signed in to your Matthews Auctioneers account. Companies, contacts and activity load from the shared database once you're signed in.</p></div>`;
 
 function renderChrome() {
   for (const b of $$('#tabs [data-tab]')) b.classList.toggle('on', b.dataset.tab === V.tab);
@@ -964,7 +982,7 @@ function renderChrome() {
   const ob = $('#out-badge');
   if (ob) { let n = 0; if (S.ready) for (const d of S.dr.values()) if (d.by === ME || !d.by) n++; ob.textContent = n ? String(n) : ''; ob.hidden = !n; }
   const chip = $('#me-chip');
-  if (chip) { chip.textContent = ME && S.team[ME] ? S.team[ME].name : 'Who are you?'; chip.hidden = !S.ready; }
+  if (chip) { chip.textContent = ME && S.team[ME] ? (S.team[ME].name || 'Account') : 'Who are you?'; chip.hidden = !S.ready; chip.title = PLATFORM === 'web' ? 'Your account' : 'Change who you are'; }
   document.body.classList.toggle('ro', !CAP.canWrite);
   const ban = $('#banners');
   let h = '';
@@ -1002,6 +1020,9 @@ function errText(e) {
   const code = e && e.code;
   if (code === 'quota_exceeded') return "The CRM's storage is full, so this wasn't saved. Export a backup from Import / Export and tell the CRM owner.";
   if (code === 'invalid_argument') return "This wasn't saved. You may have view-only access, or the record is too large.";
+  if (code === 'denied') return "This wasn't saved: your account isn't allowed to change it. Ask a CRM admin.";
+  if (code === 'conflict') return "This wasn't saved because another record already uses the same value (for a team member, the same email).";
+  if (code === 'missing_link') return "This wasn't saved because a record it points to was removed. Reload the page and try again.";
   if (code === 'revoked' || code === 'not_granted') return "This wasn't saved because the page lost access to the database. Reload and try again.";
   return "This wasn't saved. Check your connection, reload the page and try again.";
 }
@@ -1448,11 +1469,22 @@ async function reassignAll() {
 function openRep(id) {
   const r = id ? S.team[id] : null;
   const spec = [{ k: 'name', label: 'Name', req: true, full: true, max: 60 }, { k: 'active', label: 'Active', type: 'check', full: true }];
+  const web = PLATFORM === 'web';
+  if (web) {
+    spec.splice(1, 0, { k: 'email', label: 'Sign-in email', type: 'email', full: true, max: 200, hint: 'They get access once they create an account or accept an invite with this email. Leave blank for a name-only entry with no access.' });
+    spec.push({ k: 'admin', label: 'Admin: can add, change and remove team members', type: 'check', full: true });
+  }
   openDialog({
     title: r ? 'Edit team member' : 'Add team member', body: fieldsHtml(spec, r ? Object.assign({}, r, { active: r.active !== false }) : { active: true }),
     onSubmit: () => guard(async () => {
       const v = readFields(spec);
       if (!v.name) return dlgMsg('Enter a name.');
+      if (web) {
+        if (!CAP.isAdmin) return dlgMsg('Only a CRM admin can add or change team members.');
+        v.email = (v.email || '').toLowerCase();
+        if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) return dlgMsg('Enter a complete email address, or leave it blank.');
+        if (id === ME && (!v.admin || !v.active)) return dlgMsg('You can\'t remove your own admin access or deactivate yourself. Ask another admin.');
+      }
       closeDialog();
       await Store.cfgPatch('team', id || uid(), v);
     }),
@@ -1812,7 +1844,7 @@ SCREENS.territories = function () {
       <tr class="tr-un"${un ? ' data-act="go-view" data-view="unassigned"' : ''}><td>${terrTag(UNASSIGNED)}</td><td colspan="4" class="muted">No confident match by ZIP, city + state, or county + state. Flagged for review.</td><td class="num">${un}</td></tr></tbody></table></div>`
       : `<div class="empty"><h2>No territories yet</h2><p>Add a territory with its ZIP codes, cities and counties. New and imported companies are matched to it automatically.</p></div>`}
     <div class="page-head second"><div><h2>Team</h2><p class="sub">Reps who can be assigned companies, tasks, opportunities and territories</p></div><button type="button" class="btn w" data-act="rep-new">+ Team member</button></div>
-    ${reps.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Status</th><th class="num">Companies</th><th class="num">Open tasks</th></tr></thead><tbody>${reps.map(id => { const r = S.team[id]; let nc = 0, nt = 0; for (const c of S.co.values()) if (c.rep === id) nc++; for (const k of S.tk.values()) if (k.rep === id && (k.status === 'Open' || k.status === 'Snoozed')) nt++; return `<tr data-act="rep-open" data-id="${esc(id)}"><td class="co"><button type="button" class="name" data-act="rep-open" data-id="${esc(id)}">${esc(r.name)}</button>${id === ME ? ' <span class="muted">(you)</span>' : ''}</td><td>${r.active === false ? '<span class="flag">Inactive</span>' : 'Active'}</td><td class="num">${nc}</td><td class="num">${nt}</td></tr>`; }).join('')}</tbody></table></div>` : `<div class="empty"><p>No team members yet. Each person is added the first time they open the CRM and enter their name.</p></div>`}`;
+    ${reps.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Status</th><th class="num">Companies</th><th class="num">Open tasks</th></tr></thead><tbody>${reps.map(id => { const r = S.team[id]; let nc = 0, nt = 0; for (const c of S.co.values()) if (c.rep === id) nc++; for (const k of S.tk.values()) if (k.rep === id && (k.status === 'Open' || k.status === 'Snoozed')) nt++; return `<tr data-act="rep-open" data-id="${esc(id)}"><td class="co"><button type="button" class="name" data-act="rep-open" data-id="${esc(id)}">${esc(r.name)}</button>${id === ME ? ' <span class="muted">(you)</span>' : ''}</td><td>${r.active === false ? '<span class="flag">Inactive</span>' : 'Active'}${PLATFORM === 'web' ? `<div class="muted">${esc(r.email || 'No sign-in email')}${r.admin ? ' · admin' : ''}${r.email && !r.uid ? ' · has not signed in yet' : ''}</div>` : ''}</td><td class="num">${nc}</td><td class="num">${nt}</td></tr>`; }).join('')}</tbody></table></div>` : `<div class="empty"><p>${PLATFORM === 'web' ? 'No team members yet. Add each rep with the email address they will sign in with.' : 'No team members yet. Each person is added the first time they open the CRM and enter their name.'}</p></div>`}`;
 };
 
 /* ---------- Review queue ---------- */
@@ -2177,7 +2209,9 @@ SCREENS.import = function () {
       ${CAP.downloads ? `<button type="button" class="btn sm" data-act="export" data-kind="template">Download a blank template</button>` : ''}</section>
       <section class="panel"><h3>Export</h3><p>Exports open in Excel. The backup holds everything in one file.</p>
       ${CAP.downloads ? `<div class="row"><button type="button" class="btn" data-act="export" data-kind="co">Companies (CSV)</button><button type="button" class="btn" data-act="export" data-kind="ct">Contacts (CSV)</button><button type="button" class="btn" data-act="export" data-kind="op">Opportunities (CSV)</button><button type="button" class="btn" data-act="export" data-kind="tk">Tasks (CSV)</button><button type="button" class="btn" data-act="export" data-kind="ac">Activities (CSV)</button><button type="button" class="btn" data-act="export" data-kind="backup">Full backup (JSON)</button></div>` : `<p class="muted">Saving files isn't available in this view.</p>`}
-      <p class="muted">${S.co.size.toLocaleString()} companies · ${S.ct.size.toLocaleString()} contacts · ${S.ac.size.toLocaleString()} activities · ${S.tk.size.toLocaleString()} tasks · ${S.op.size.toLocaleString()} opportunities</p></section>`;
+      <p class="muted">${S.co.size.toLocaleString()} companies · ${S.ct.size.toLocaleString()} contacts · ${S.ac.size.toLocaleString()} activities · ${S.tk.size.toLocaleString()} tasks · ${S.op.size.toLocaleString()} opportunities</p></section>
+      ${PLATFORM === 'web' ? `<section class="panel"><h3>Restore from a backup</h3><p>Load a Full backup (JSON) file exported from this CRM or from the Claude-hosted version. Records already here are left alone, so loading the same file twice adds nothing.</p>
+      <label class="drop w" for="backup-file"><b>Choose a backup file</b><span class="muted">The .json file from Full backup</span><input id="backup-file" type="file" accept=".json,application/json" data-change="backup-file"></label>${im.restore ? `<p>${esc(im.restore)}</p>` : ''}</section>` : ''}`;
   } else if (im.step === 'map') {
     const groups = `<option value="">Don't import</option><optgroup label="Company">${IMPORT_FIELDS.filter(f => f[0].startsWith('co.')).map(f => `<option value="${f[0]}">${esc(f[1])}</option>`).join('')}</optgroup><optgroup label="Contact">${IMPORT_FIELDS.filter(f => f[0].startsWith('ct.')).map(f => `<option value="${f[0]}">${esc(f[1])}</option>`).join('')}</optgroup>`;
     const mapped = im.map.filter(Boolean).length;
@@ -2334,7 +2368,8 @@ async function aiDraftMany(targets, extra, opts) {
 }
 function aiErrText(e) {
   switch (e && e.code) {
-    case 'not_granted': return 'AI drafting was not allowed for this page, so no draft was written. Reload the page and choose Allow when Claude asks.';
+    case 'not_configured': return 'AI drafting is not set up on this site yet. Add an Anthropic API key named ANTHROPIC_API_KEY in the Vercel project settings, then redeploy.';
+    case 'not_granted': return PLATFORM === 'web' ? 'Your account is not allowed to use AI drafting. Sign in again, or ask a CRM admin.' : 'AI drafting was not allowed for this page, so no draft was written. Reload the page and choose Allow when Claude asks.';
     case 'sampling_disabled': case 'not_declared': case 'capability_disabled': case 'capability_removed': return 'AI drafting is not available for your account in this view.';
     case 'rate_limited': return 'Claude\'s usage limit was reached. Wait a few minutes and try again.';
     case 'session_expired': return 'Your Claude session expired. Sign in again, then retry.';
@@ -2403,7 +2438,7 @@ function openDraft(coId, ctId) {
   let busy = false;
   openDialog({
     title: 'Draft email to ' + c.name, wide: true, submitLabel: 'Draft with AI',
-    sub: 'Claude writes the draft from this company\'s record and activity. You review and send it yourself. Drafting uses your own Claude usage.',
+    sub: 'Claude writes the draft from this company\'s record and activity. You review and send it yourself.' + (PLATFORM === 'web' ? '' : ' Drafting uses your own Claude usage.'),
     body: fieldsHtml(spec, { ct: pre, purpose: pickPurpose(c, info) }) + `<div id="dr-stream" class="stream pre" hidden></div>`,
     onSubmit: () => {
       if (busy) return;
@@ -2436,10 +2471,13 @@ function openDraft(coId, ctId) {
 function openDraftCard(id) {
   const d = S.dr.get(id);
   if (!d) return;
-  openDialog({ title: 'Email draft', wide: true, noFocus: true, cancelLabel: 'Keep in queue', body: `<ul class="cards drafts">${draftCard(d)}</ul><p class="muted">The CRM does not send email. Copy this into your own email, send it, then mark it sent. It stays in the Outreach queue until you do.</p>` });
+  openDialog({ title: 'Email draft', wide: true, noFocus: true, cancelLabel: 'Keep in queue', body: `<ul class="cards drafts">${draftCard(d)}</ul><p class="muted">The CRM does not send email. ${CAP.mcp ? 'Create a Gmail draft, or copy this into your own email. Send it,' : PLATFORM === 'web' ? 'Open it in Gmail or copy it into your own email, send it,' : 'Copy this into your own email, send it,'} then mark it sent. It stays in the Outreach queue until you do.</p>` });
 }
 function mailtoHref(to, subject, body) {
   return 'mailto:' + encodeURIComponent(to).replace(/%40/g, '@') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(cap(body, 1800));
+}
+function gmailComposeHref(to, subject, body) {
+  return 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(cap(body, 4000));
 }
 function draftCard(d) {
   const c = S.co.get(d.co), ct = S.ct.get(d.ct);
@@ -2453,7 +2491,8 @@ function draftCard(d) {
     <div class="draft-to"><span class="muted">To</span> <b>${esc(ct ? ctName(ct) : '')}</b> <span class="sel" id="dr-to-${id}">${esc(to)}</span><button type="button" class="copy" data-act="dr-copy" data-id="${id}" data-part="to">Copy</button></div>
     <label class="vh" for="dr-sub-${id}">Subject</label><input id="dr-sub-${id}" class="draft-sub" type="text" maxlength="200" value="${esc(d.subject)}" data-hold data-change="dr-edit" data-input="dr-live" data-id="${id}" data-key="subject">
     <label class="vh" for="dr-body-${id}">Body</label><textarea id="dr-body-${id}" rows="${Math.min(16, Math.max(7, Math.ceil(d.body.length / 62) + (d.body.match(/\n/g) || []).length))}" maxlength="3500" data-hold data-change="dr-edit" data-input="dr-live" data-id="${id}" data-key="body">${esc(d.body)}</textarea>
-    <div class="row"><button type="button" class="btn sm" data-act="dr-copy" data-id="${id}" data-part="subject">Copy subject</button><button type="button" class="btn sm" data-act="dr-copy" data-id="${id}" data-part="body">Copy body</button><a class="btn sm" id="dr-mail-${id}" href="${esc(mailtoHref(to, d.subject, d.body))}" target="_blank" rel="noopener noreferrer" title="Opens your email app where the browser allows it. Copy always works.">Open in email app</a>
+    ${d.gmailAt ? `<div class="draft-gmail">In your Gmail drafts since ${esc(fmtDateTime(d.gmailAt))}.${d.gmailUrl ? ` <a href="${esc(d.gmailUrl)}" target="_blank" rel="noopener noreferrer">Open in Gmail</a>` : ''} Send it there, then mark it sent here.</div>` : ''}
+    <div class="row">${CAP.mcp && !stop ? `<button type="button" class="btn sm ai w" data-act="dr-gmail" data-id="${id}">${d.gmailAt ? 'Add to Gmail again' : 'Create Gmail draft'}</button>` : ''}<button type="button" class="btn sm" data-act="dr-copy" data-id="${id}" data-part="subject">Copy subject</button><button type="button" class="btn sm" data-act="dr-copy" data-id="${id}" data-part="body">Copy body</button>${PLATFORM === 'web' && !stop ? `<a class="btn sm ai" id="dr-gm-${id}" href="${esc(gmailComposeHref(to, d.subject, d.body))}" target="_blank" rel="noopener noreferrer" title="Opens a new Gmail message with this draft filled in">Open in Gmail</a>` : ''}<a class="btn sm" id="dr-mail-${id}" href="${esc(mailtoHref(to, d.subject, d.body))}" target="_blank" rel="noopener noreferrer" title="Opens your email app where the browser allows it. Copy always works.">Open in email app</a>
       <span class="grow"></span><button type="button" class="btn sm w" data-act="dr-skip" data-id="${id}">Discard</button>${CAP.sample && c ? `<button type="button" class="btn sm w" data-act="dr-redo" data-id="${id}">Redraft</button>` : ''}<button type="button" class="btn sm primary w" data-act="dr-sent" data-id="${id}"${stop ? ' disabled' : ''}>Mark as sent</button></div>
   </li>`;
 }
@@ -2478,6 +2517,49 @@ async function markDraftSent(id) {
   jobs.push(Store.remove('dr', id));
   toast('Logged as sent' + (c ? ' to ' + c.name : '') + '. Next follow-up ' + fmtDate(nextFU) + '.');
   await Promise.all(jobs);
+}
+/* ---------- Gmail: put a reviewed draft into the rep's own Gmail drafts folder ---------- */
+function gmailErrText(e) {
+  switch (e && e.code) {
+    case 'needs_reauth': return 'Gmail needs to be reconnected. In Claude, open Settings, then Connectors, reconnect Gmail, and try again.';
+    case 'server_not_connected': case 'server_not_found': return 'Gmail is not connected to your Claude account. In Claude, open Settings, then Connectors, add Gmail, and try again. The copy buttons work without it.';
+    case 'selection_required': return 'You have more than one Gmail connection. Choose one when Claude asks, then try again.';
+    case 'not_in_manifest': case 'not_granted': case 'consent_required': return 'Gmail was not allowed for this page, so no draft was created. Reload the page and choose Allow when Claude asks, or use the copy buttons.';
+    case 'blocked_by_policy': case 'approval_required': return 'Your organization\'s settings do not allow this page to create Gmail drafts. Use the copy buttons.';
+    case 'capability_disabled': case 'capability_removed': return 'Gmail drafts are not available in this view. Use the copy buttons.';
+    case 'tool_error': return 'Gmail did not accept the draft' + (e.message ? ': ' + cap(String(e.message), 160) : '.') + ' Check the email address and try again.';
+    case 'bad_request': case 'transform_error': return 'The draft could not be sent to Gmail as written. Use the copy buttons.';
+    case 'cancelled': return 'The Gmail draft was cancelled.';
+    default: return 'Gmail did not confirm the draft. Check your Gmail drafts folder before trying again, so you do not create it twice.';
+  }
+}
+async function gmailDraft(id, btn) {
+  const d = S.dr.get(id);
+  if (!d || !CAP.mcp || btn.dataset.busy) return;
+  const live = draftLive(id);
+  if (!validEmail(live.to)) return toast('This draft has no valid email address to send to.', { error: true });
+  if (!live.body) return toast('The draft is empty.', { error: true });
+  if (d.gmailAt && btn.dataset.again !== '1') { btn.dataset.again = '1'; btn.textContent = 'Already in Gmail. Click again to add another'; return; }
+  const label = btn.textContent;
+  btn.dataset.busy = '1'; btn.disabled = true; btn.textContent = 'Adding to Gmail…';
+  try {
+    /* One write per click. A failure is never retried here: the draft may have been created anyway. */
+    const r = await CAP.mcp.callTool('Gmail', 'create_draft', { to: [live.to], subject: live.subject, body: live.body }, { cache: false });
+    const p = r && r.payload;
+    const raw = p && typeof p === 'object' && typeof p.viewUrl === 'string' ? safeUrl(p.viewUrl) : '';
+    const patch = { gmailAt: nowIso(), gmailUrl: /^https:\/\/mail\.google\.com\//.test(raw) ? raw : '' };
+    if (live.subject) patch.subject = live.subject;
+    patch.body = live.body;
+    btn.textContent = 'Added to Gmail';
+    toast('Draft added to your Gmail. Send it there, then mark it sent here.');
+    await Store.patch('dr', id, patch);
+  } catch (e) {
+    console.error(e);
+    btn.disabled = false; btn.textContent = label;
+    toast(DB_CODES.includes(e && e.code) && !(e && e.server) ? errText(e) : gmailErrText(e), { error: true });
+  } finally {
+    delete btn.dataset.busy; delete btn.dataset.again;
+  }
 }
 async function redraft(id) {
   const d = S.dr.get(id), c = d && S.co.get(d.co), ct = d && S.ct.get(d.ct);
@@ -2518,10 +2600,10 @@ SCREENS.outreach = function () {
     <div class="fld"><label for="out-extra">Anything every email in this batch should mention? (optional)</label><input id="out-extra" type="text" maxlength="800" value="${esc(f.extra || '')}" data-hold data-input="out-opt" data-key="extra" placeholder="For example: our next equipment auction closes November 14"></div>
     <p><b>${t.list.length.toLocaleString()}</b> ${t.list.length === 1 ? 'company is' : 'companies are'} ready to email in this list${t.list.length ? ': ' + esc(t.list.slice(0, 4).map(x => x.c.name).join(', ')) + (t.list.length > 4 ? ' and ' + (t.list.length - 4) + ' more' : '') : ''}.${skipText ? ` <span class="muted">Left out: ${esc(skipText)}.</span>` : ''}</p>
     ${run ? `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${run.total}" aria-valuenow="${run.done}"><span style="width:${Math.round(run.done / run.total * 100)}%"></span></div><div class="row"><span class="muted">Drafted ${run.done} of ${run.total}. Claude thinks for a while before each group of five.</span><button type="button" class="btn sm" data-act="dr-stop">Stop</button></div>`
-      : (ai ? `<div class="row"><button type="button" class="btn primary w" data-act="dr-batch"${n ? '' : ' disabled'}>Draft ${n || ''} ${n === 1 ? 'email' : 'emails'} with AI</button><span class="muted">Uses your own Claude usage. Claude asks you to allow it the first time.</span></div>` : `<p class="err-text">AI drafting is not available in this view. Open the CRM from Claude while signed in to use it.</p>`)}
+      : (ai ? `<div class="row"><button type="button" class="btn primary w" data-act="dr-batch"${n ? '' : ' disabled'}>Draft ${n || ''} ${n === 1 ? 'email' : 'emails'} with AI</button><span class="muted">${PLATFORM === 'web' ? 'Runs on the company\'s Claude API key. Each batch takes up to a minute.' : 'Uses your own Claude usage. Claude asks you to allow it the first time.'}</span></div>` : `<p class="err-text">AI drafting is not available in this view. Open the CRM from Claude while signed in to use it.</p>`)}
   </section>`;
   const queue = `<section class="panel"><div class="panel-h"><h3>Ready to review and send <span class="cnt">${show.length}</span></h3>${others.length ? `<button type="button" class="pill${f.all ? ' on' : ''}" data-act="out-all">Show everyone's (${mine.length + others.length})</button>` : ''}</div>
-    <p class="muted">The CRM does not send email. Copy a draft into your own email, send it, then mark it sent. That logs the email on the company, counts the outreach attempt and sets the next follow-up ${Number(cfg.gap) || 4} business days out.</p>
+    <p class="muted">The CRM does not send email. ${CAP.mcp ? 'Create a Gmail draft (it lands in your own Gmail drafts folder) or copy the text' : PLATFORM === 'web' ? 'Open a draft in Gmail or copy it' : 'Copy a draft'} into your own email, send it, then mark it sent. That logs the email on the company, counts the outreach attempt and sets the next follow-up ${Number(cfg.gap) || 4} business days out.</p>
     ${show.length ? `<ul class="cards drafts">${show.slice(0, 40).map(draftCard).join('')}</ul>${show.length > 40 ? `<p class="muted">Showing 40 of ${show.length}.</p>` : ''}` : `<p class="muted">No drafts waiting. Draft a batch above, or use Draft email on a company page.</p>`}</section>`;
   const settings = `<section class="panel"><div class="panel-h"><h3>What the AI knows and how it signs off</h3><button type="button" class="btn sm" data-act="out-cfg">${f.cfgOpen ? 'Hide' : 'Edit'}</button></div>
     ${f.cfgOpen ? `<div class="grid">
@@ -2620,6 +2702,7 @@ const ACTIONS = {
   'dr-batch': () => { runBatch(); },
   'dr-stop': () => { if (V.out.run) V.out.run.stop = true; if (_outCtl) _outCtl.abort(); },
   'dr-sent': t => guard(() => markDraftSent(t.dataset.id)),
+  'dr-gmail': t => { gmailDraft(t.dataset.id, t); },
   'dr-redo': t => guard(() => redraft(t.dataset.id)),
   'dr-skip': t => {
     if (t.dataset.armed !== '1') { t.dataset.armed = '1'; t.textContent = 'Click again to discard'; return; }
@@ -2686,52 +2769,8 @@ const INPUTS = {
   'imp-opt': t => { V.imp[t.dataset.key] = t.value; },
   'out-opt': t => { V.out[t.dataset.key] = t.value; },
   'out-form': t => { V.out.form = V.out.form || {}; V.out.form[t.dataset.key] = t.value; },
-  'dr-live': t => { const a = $('#dr-mail-' + t.dataset.id); if (a) { const l = draftLive(t.dataset.id); a.href = mailtoHref(l.to, l.subject, l.body); } },
+  'dr-live': t => { const l = draftLive(t.dataset.id); const a = $('#dr-mail-' + t.dataset.id); if (a) a.href = mailtoHref(l.to, l.subject, l.body); const g = $('#dr-gm-' + t.dataset.id); if (g) g.href = gmailComposeHref(l.to, l.subject, l.body); },
 };
-
-function openMe() {
-  const reps = repList(true);
-  const spec = [
-    { k: 'who', label: 'I am', type: 'select', opts: reps.map(id => [id, S.team[id].name]), blank: 'Someone new', full: true },
-    { k: 'name', label: 'Name shown on my activity', full: true, max: 60, hint: 'Pick yourself above, or type a name to add or rename.' },
-  ];
-  openDialog({
-    title: 'Who\'s using the CRM?', body: fieldsHtml(spec, { who: ME || '', name: ME && S.team[ME] ? S.team[ME].name : '' }),
-    onSubmit: () => guard(async () => {
-      const v = readFields(spec);
-      if (!v.who && !v.name) return dlgMsg('Pick your name or type it.');
-      closeDialog();
-      await setMe(v.who, v.name);
-    }),
-  });
-}
-async function setMe(pick, name) {
-  let id = pick;
-  const jobs = [];
-  if (id && S.team[id]) {
-    const patch = {};
-    if (CAP.uid && S.team[id].uid !== CAP.uid) patch.uid = CAP.uid;
-    if (name && name !== S.team[id].name) patch.name = name;
-    if (Object.keys(patch).length) jobs.push(Store.cfgPatch('team', id, patch));
-  } else {
-    const hit = Object.keys(S.team).find(k => S.team[k].name.toLowerCase() === name.toLowerCase() && (!S.team[k].uid || S.team[k].uid === CAP.uid));
-    id = hit || uid();
-    jobs.push(Store.cfgPatch('team', id, hit ? { uid: CAP.uid || '', active: true } : { name, active: true, uid: CAP.uid || '' }));
-  }
-  ME = id;
-  try { localStorage.setItem('mcrm.me', id); } catch (e) { /* storage is optional */ }
-  if (!V.tk.rep) V.tk.rep = id;
-  renderNow();
-  await Promise.all(jobs);
-}
-function identify() {
-  if (ME && S.team[ME]) return;
-  let found = null;
-  if (CAP.uid) for (const id in S.team) if (S.team[id].uid === CAP.uid) { found = id; break; }
-  if (!found) { try { const l = localStorage.getItem('mcrm.me'); if (l && S.team[l] && (!S.team[l].uid || !CAP.uid)) found = l; } catch (e) { /* storage is optional */ } }
-  ME = found;
-  if (ME && !V._meInit) { V._meInit = true; V.tk.rep = ME; V.out.rep = ME; }
-}
 
 /* ---------- global search ---------- */
 function runSearch(q) {
@@ -2778,17 +2817,70 @@ function wire() {
   $('#gsearch').addEventListener('focus', e => runSearch(e.target.value));
 }
 
-async function boot() {
+function startShell() {
   $('#tabs').innerHTML = TABS.map(([id, l]) => `<button type="button" data-act="tab" data-tab="${id}">${l}${id === 'review' ? '<span class="badge" id="review-badge" hidden></span>' : ''}${id === 'outreach' ? '<span class="badge" id="out-badge" hidden></span>' : ''}</button>`).join('');
   const h = (location.hash || '').slice(1);
   if (TABS.some(t => t[0] === h)) V.tab = h;
   wire();
   render();
+}
+
+/* ============================================================
+   Start-up for the Claude-hosted build: identity comes from the viewer's Claude
+   account, storage and AI from the page's runtime capabilities.
+   ============================================================ */
+function openMe() {
+  const reps = repList(true);
+  const spec = [
+    { k: 'who', label: 'I am', type: 'select', opts: reps.map(id => [id, S.team[id].name]), blank: 'Someone new', full: true },
+    { k: 'name', label: 'Name shown on my activity', full: true, max: 60, hint: 'Pick yourself above, or type a name to add or rename.' },
+  ];
+  openDialog({
+    title: 'Who\'s using the CRM?', body: fieldsHtml(spec, { who: ME || '', name: ME && S.team[ME] ? S.team[ME].name : '' }),
+    onSubmit: () => guard(async () => {
+      const v = readFields(spec);
+      if (!v.who && !v.name) return dlgMsg('Pick your name or type it.');
+      closeDialog();
+      await setMe(v.who, v.name);
+    }),
+  });
+}
+async function setMe(pick, name) {
+  let id = pick;
+  const jobs = [];
+  if (id && S.team[id]) {
+    const patch = {};
+    if (CAP.uid && S.team[id].uid !== CAP.uid) patch.uid = CAP.uid;
+    if (name && name !== S.team[id].name) patch.name = name;
+    if (Object.keys(patch).length) jobs.push(Store.cfgPatch('team', id, patch));
+  } else {
+    const hit = Object.keys(S.team).find(k => S.team[k].name.toLowerCase() === name.toLowerCase() && (!S.team[k].uid || S.team[k].uid === CAP.uid));
+    id = hit || uid();
+    jobs.push(Store.cfgPatch('team', id, hit ? { uid: CAP.uid || '', active: true } : { name, active: true, uid: CAP.uid || '' }));
+  }
+  ME = id;
+  try { localStorage.setItem('mcrm.me', id); } catch (e) { /* storage is optional */ }
+  if (!V.tk.rep) V.tk.rep = id;
+  renderNow();
+  await Promise.all(jobs);
+}
+function identify() {
+  if (ME && S.team[ME]) return;
+  let found = null;
+  if (CAP.uid) for (const id in S.team) if (S.team[id].uid === CAP.uid) { found = id; break; }
+  if (!found) { try { const l = localStorage.getItem('mcrm.me'); if (l && S.team[l] && (!S.team[l].uid || !CAP.uid)) found = l; } catch (e) { /* storage is optional */ } }
+  ME = found;
+  if (ME && !V._meInit) { V._meInit = true; V.tk.rep = ME; V.out.rep = ME; }
+}
+
+async function boot() {
+  startShell();
   const c = window.claude;
   if (c && typeof c.use === 'function') {
     const safe = name => Promise.resolve().then(() => c.use(name)).catch(() => null);
-    const [db, user, downloads, sample] = await Promise.all([safe('db'), safe('user'), safe('downloads'), safe('sample')]);
+    const [db, user, downloads, sample, mcp] = await Promise.all([safe('db'), safe('user'), safe('downloads'), safe('sample'), safe('mcp')]);
     CAP.db = db; CAP.user = user; CAP.downloads = downloads; CAP.sample = typeof sample === 'function' ? sample : null;
+    CAP.mcp = mcp && typeof mcp.callTool === 'function' ? mcp : null;
     if (user) {
       try { CAP.uid = await user.id(); } catch (e) { /* no identity in this view */ }
       try { if ((await user.can('data.write')) === false) CAP.canWrite = false; } catch (e) { /* let a refused write decide */ }

@@ -1,14 +1,17 @@
 {
   "name": "sellwithmatthews",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Matthews Auctioneers equipment consignment prospecting CRM",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node build.mjs && node test/run.mjs"
+    "test": "node build.mjs && node test/run.mjs && node test/run-web.mjs",
+    "test:claude": "node build.mjs && node test/run.mjs",
+    "test:web": "node build.mjs && node test/run-web.mjs"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "playwright": "^1.56.0"
   }
 }
