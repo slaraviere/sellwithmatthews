@@ -29,7 +29,7 @@ const ACT_META = {
   'Consignment Discussion': { method: 'Conversation', contact: true },
 };
 const OUTCOMES = ['Connected', 'No answer', 'Left voicemail', 'Sent', 'Replied', 'Gatekeeper', 'Wrong contact', 'Correct contact found', 'Call back later', 'Interested', 'Has equipment', 'Not interested'];
-const TASK_TYPES = ['Call', 'Email', 'Follow-Up', 'Research', 'Site Visit', 'Equipment Review', 'Consignment Follow-Up'];
+const TASK_TYPES = ['Call', 'Email', 'Follow-Up', 'Research', 'Site Visit', 'Equipment Review', 'Consignment Follow-Up', 'Appointment'];
 const TASK_STATUS = ['Open', 'Completed', 'Snoozed', 'Cancelled'];
 const TASK_PRI = ['High', 'Normal', 'Low'];
 const STAGES = ['Identified', 'Initial Discussion', 'Equipment Confirmed', 'Photos / Details Requested', 'Valuation / Review', 'Terms Discussed', 'Consignment Agreed', 'Scheduled for Auction', 'Sold', 'No Sale', 'Lost', 'Future Opportunity'];

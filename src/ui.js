@@ -492,6 +492,7 @@ function openActivity(coId, type, actId, ctId) {
 
 function openTask(id, coId, preset) {
   const t = id ? S.tk.get(id) : null;
+  if (isAppt(t)) return openAppt(id);
   if (t) coId = t.co;
   const contacts = coId ? (derive().ctByCo.get(coId) || []) : [];
   const spec = [
@@ -500,7 +501,7 @@ function openTask(id, coId, preset) {
     { k: 'ct', label: 'Contact', type: 'select', opts: contacts.map(x => [x.id, ctName(x)]), blank: 'No specific contact' },
     { k: 'rep', label: 'Assigned to', type: 'select', opts: repOpts(false) },
     { k: 'due', label: 'Due date', type: 'date', after: fuQuickHtml('f-due') },
-    { k: 'type', label: 'Task type', type: 'select', opts: TASK_TYPES, noBlank: true },
+    { k: 'type', label: 'Task type', type: 'select', opts: TASK_TYPES.filter(x => x !== 'Appointment'), noBlank: true },
     { k: 'priority', label: 'Priority', type: 'select', opts: TASK_PRI, noBlank: true },
     { k: 'status', label: 'Status', type: 'select', opts: TASK_STATUS, noBlank: true },
     { k: 'notes', label: 'Notes', type: 'textarea', full: true },
@@ -730,7 +731,7 @@ SCREENS.dashboard = function () {
     if (c.status === 'Has Equipment') n.hasEquip++;
     if (c.created && isoToYmd(c.created) >= ws) n.newWeek++;
   }
-  let tkToday = 0, tkOver = 0, tkWeek = 0; const tkList = [];
+  let tkToday = 0, tkOver = 0, tkWeek = 0, apWeek = 0, apToday = 0; const tkList = [];
   for (const k of S.tk.values()) {
     if (k.status !== 'Open' && k.status !== 'Snoozed') continue;
     if (!relOk(k.co, k.rep)) continue;
@@ -739,6 +740,7 @@ SCREENS.dashboard = function () {
     if (k.due < t) tkOver++;
     if (k.due >= t && k.due <= we) tkWeek++;
     if (k.due <= t) tkList.push(k);
+    if (isAppt(k) && k.due >= t && k.due <= we) { apWeek++; if (k.due === t) apToday++; }
   }
   let calls = 0, emails = 0;
   for (const a of S.ac.values()) {
@@ -757,7 +759,7 @@ SCREENS.dashboard = function () {
     const cur = byTerr.get(tc) || { n: 0, v: 0 }; cur.n++; cur.v += Number(o.value) || 0; byTerr.set(tc, cur);
   }
   fuList.sort((a, b) => a.nextFU < b.nextFU ? -1 : a.nextFU > b.nextFU ? 1 : PRIORITIES.indexOf(a.priority) - PRIORITIES.indexOf(b.priority));
-  tkList.sort((a, b) => a.due < b.due ? -1 : a.due > b.due ? 1 : 0);
+  tkList.sort(apptSort);
   const filtered = !!(anyCo || f.rep);
   const empty = S.co.size === 0;
   const head = `<div class="page-head"><div><h1>Dashboard</h1><p class="sub">${esc(new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))} · week of ${esc(fmtDate(ws))}</p></div></div>
@@ -771,6 +773,7 @@ SCREENS.dashboard = function () {
       ${tile('Tasks due today', tkToday, 'go-tasks', 'data-tk="today"', tkToday ? 'now' : '')}
       ${tile('Overdue tasks', tkOver, 'go-tasks', 'data-tk="overdue"', tkOver ? 'over' : '')}
       ${tile('Tasks due this week', tkWeek, 'go-tasks', 'data-tk="week"')}
+      ${tile('Appointments this week', apWeek, 'go-tasks', 'data-tk="appts"', apToday ? 'now' : '', apToday ? apToday + ' today' : '')}
     </div>
     <h2 class="sec">Prospects</h2>
     <div class="tiles">
@@ -795,9 +798,12 @@ SCREENS.dashboard = function () {
 };
 function taskRow(k) {
   const done = k.status === 'Completed' || k.status === 'Cancelled';
+  const ap = isAppt(k);
+  const line = ap ? [apptWhen(k), k.location, k.ct && S.ct.get(k.ct) ? 'with ' + ctName(S.ct.get(k.ct)) : '', repName(k.rep)] : [k.type, k.co ? coName(k.co) : '', repName(k.rep)];
+  const cal = ap && !done ? calendarHref(k) : '';
   return `<li class="${done ? 'done' : ''}"><label class="tick w" title="${done ? 'Reopen' : 'Mark complete'}"><input type="checkbox" id="tk-${esc(k.id)}" data-change="tk-done" data-id="${esc(k.id)}"${k.status === 'Completed' ? ' checked' : ''}><span class="vh">Complete ${esc(k.name)}</span></label>
-    <div class="rows-main"><button type="button" class="name" data-act="tk-open" data-id="${esc(k.id)}">${esc(k.name)}</button><span class="muted">${esc([k.type, k.co ? coName(k.co) : '', repName(k.rep)].filter(Boolean).join(' · '))}${k.status === 'Snoozed' ? ' · Snoozed' : ''}${k.status === 'Cancelled' ? ' · Cancelled' : ''}</span></div>
-    <div class="rows-meta">${k.priority === 'High' ? '<span class="st st-stop">High</span>' : ''}${done ? `<span class="muted">${esc(k.doneAt ? 'Done ' + fmtDate(isoToYmd(k.doneAt)) : k.status)}</span>` : dueSpan(k.due)}${done ? '' : `<button type="button" class="btn sm w" data-act="tk-snooze" data-id="${esc(k.id)}" data-days="1" title="Snooze 1 day">+1d</button><button type="button" class="btn sm w" data-act="tk-snooze" data-id="${esc(k.id)}" data-days="7" title="Snooze 1 week">+1w</button>`}</div></li>`;
+    <div class="rows-main"><button type="button" class="name" data-act="tk-open" data-id="${esc(k.id)}">${esc(k.name)}</button><span class="muted">${esc(line.filter(Boolean).join(' · '))}${k.status === 'Snoozed' ? ' · Snoozed' : ''}${k.status === 'Cancelled' ? ' · Cancelled' : ''}</span></div>
+    <div class="rows-meta">${ap ? '<span class="st st-out">Appointment</span>' : ''}${k.priority === 'High' ? '<span class="st st-stop">High</span>' : ''}${done ? `<span class="muted">${esc(k.doneAt ? 'Done ' + fmtDate(isoToYmd(k.doneAt)) : k.status)}</span>` : dueSpan(k.due)}${cal ? `<a class="btn sm" href="${esc(cal)}" target="_blank" rel="noopener noreferrer" title="Opens Google Calendar with this appointment filled in">Add to calendar</a>` : ''}${done || ap ? '' : `<button type="button" class="btn sm w" data-act="tk-snooze" data-id="${esc(k.id)}" data-days="1" title="Snooze 1 day">+1d</button><button type="button" class="btn sm w" data-act="tk-snooze" data-id="${esc(k.id)}" data-days="7" title="Snooze 1 week">+1w</button>`}</div></li>`;
 }
 
 /* ---------- Companies ---------- */
@@ -838,9 +844,9 @@ function companyDetail(c) {
   const d = derive(), info = coInfo(c);
   const contacts = (d.ctByCo.get(c.id) || []).slice().sort((a, b) => (b.primary ? 1 : 0) - (a.primary ? 1 : 0) || ctName(a).localeCompare(ctName(b)));
   const acts = d.actByCo.get(c.id) || [];
-  const tasks = (d.tkByCo.get(c.id) || []).filter(k => k.status === 'Open' || k.status === 'Snoozed').sort((a, b) => (a.due || '9') < (b.due || '9') ? -1 : 1);
+  const tasks = (d.tkByCo.get(c.id) || []).filter(isOpenTask).sort(apptSort);
   const opps = (d.opByCo.get(c.id) || []).slice().sort((a, b) => (b.created || '') < (a.created || '') ? -1 : 1);
-  const t = S.terr[c.terr];
+  const t = S.terr[c.terr], appt = nextAppt(c.id);
   const url = safeUrl(c.web), src = safeUrl(c.srcUrl);
   const flags = [
     c.status === 'Do Not Contact' ? '<span class="flag big">Do Not Contact</span>' : '',
@@ -848,6 +854,7 @@ function companyDetail(c) {
     c.terr === UNASSIGNED ? '<span class="flag big warn">Territory needs review</span>' : '',
     d.dupIds.has(c.id) ? '<button type="button" class="flag big warn" data-act="tab" data-tab="review">Possible duplicate</button>' : '',
     isDormant(c, info) ? '<span class="flag big warn">Dormant: review for nurture</span>' : '',
+    appt ? `<button type="button" class="flag big appt" data-act="tk-open" data-id="${esc(appt.id)}">${esc((appt.apptKind || 'Appointment') + ' ' + apptWhen(appt))}</button>` : '',
   ].join('');
   const row = (label, val) => `<div class="kv"><dt>${esc(label)}</dt><dd>${val || '<span class="muted">–</span>'}</dd></div>`;
   const details = `<dl class="kvs">
@@ -882,10 +889,10 @@ function companyDetail(c) {
         <label class="mini-f"><span>Next follow-up</span><input id="d-fu" class="w${c.nextFU && c.nextFU <= today() ? ' over' : ''}" type="date" value="${esc(c.nextFU || '')}" data-change="co-set" data-id="${esc(c.id)}" data-key="nextFU"></label>
       </div>
     </div>
-    <div class="actions">${CAP.sample ? `<button type="button" class="btn ai w" data-act="dr-new" data-id="${esc(c.id)}">Draft email with AI</button>` : ''}${logBtn('Phone Call', 'Log call')}${logBtn('Email Sent', 'Log email')}${logBtn('Voicemail', 'Log voicemail')}${logBtn('Note', 'Add note')}<button type="button" class="btn w" data-act="log-other" data-id="${esc(c.id)}">Other activity</button><span class="grow"></span><button type="button" class="btn w" data-act="tk-new" data-id="${esc(c.id)}">+ Task</button><button type="button" class="btn w" data-act="op-new" data-id="${esc(c.id)}">+ Opportunity</button><button type="button" class="btn w" data-act="co-edit" data-id="${esc(c.id)}">Edit</button></div>
+    <div class="actions">${CAP.sample ? `<button type="button" class="btn ai w" data-act="dr-new" data-id="${esc(c.id)}">Draft email with AI</button>` : ''}${logBtn('Phone Call', 'Log call')}${logBtn('Email Sent', 'Log email')}${logBtn('Voicemail', 'Log voicemail')}${logBtn('Note', 'Add note')}<button type="button" class="btn w" data-act="log-other" data-id="${esc(c.id)}">Other activity</button><span class="grow"></span><button type="button" class="btn w" data-act="ap-new" data-id="${esc(c.id)}">+ Appointment</button><button type="button" class="btn w" data-act="tk-new" data-id="${esc(c.id)}">+ Task</button><button type="button" class="btn w" data-act="op-new" data-id="${esc(c.id)}">+ Opportunity</button><button type="button" class="btn w" data-act="co-edit" data-id="${esc(c.id)}">Edit</button></div>
     <div class="detail">
       <section class="detail-main">
-        ${tasks.length ? `<div class="panel"><h3>Open tasks</h3><ul class="rows">${tasks.map(taskRow).join('')}</ul></div>` : ''}
+        ${tasks.length ? `<div class="panel"><h3>Open tasks and appointments</h3><ul class="rows">${tasks.map(taskRow).join('')}</ul></div>` : ''}
         <div class="panel"><h3>Activity</h3>${tlHtml}</div>
       </section>
       <aside class="detail-side">
@@ -948,21 +955,21 @@ SCREENS.opportunities = function () {
 /* ---------- Tasks ---------- */
 SCREENS.tasks = function () {
   const f = V.tk, t = today(), we = weekEnd();
-  const tabs = [['today', 'Due today'], ['overdue', 'Overdue'], ['week', 'This week'], ['open', 'All open'], ['done', 'Completed']];
-  const counts = { today: 0, overdue: 0, week: 0, open: 0, done: 0 };
+  const tabs = [['today', 'Due today'], ['overdue', 'Overdue'], ['week', 'This week'], ['appts', 'Appointments'], ['open', 'All open'], ['done', 'Completed']];
+  const counts = { today: 0, overdue: 0, week: 0, appts: 0, open: 0, done: 0 };
   const rows = [];
   for (const k of S.tk.values()) {
     if (f.rep && (f.rep === 'none' ? !!k.rep : k.rep !== f.rep)) continue;
     const open = k.status === 'Open' || k.status === 'Snoozed';
     const which = [];
-    if (open) { which.push('open'); if (k.due === t) which.push('today'); if (k.due && k.due < t) which.push('overdue'); if (k.due && k.due >= t && k.due <= we) which.push('week'); }
+    if (open) { which.push('open'); if (isAppt(k)) which.push('appts'); if (k.due === t) which.push('today'); if (k.due && k.due < t) which.push('overdue'); if (k.due && k.due >= t && k.due <= we) which.push('week'); }
     else which.push('done');
     for (const w of which) counts[w]++;
     if (which.includes(f.tab)) rows.push(k);
   }
   if (f.tab === 'done') rows.sort((a, b) => (b.doneAt || b.created || '').localeCompare(a.doneAt || a.created || ''));
-  else rows.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || TASK_PRI.indexOf(a.priority) - TASK_PRI.indexOf(b.priority));
-  return `<div class="page-head"><div><h1>Tasks</h1><p class="sub">Calls, emails and follow-ups with a due date</p></div><div class="row">${exportBtn('tk')}<button type="button" class="btn primary w" data-act="tk-new" data-id="">+ Task</button></div></div>
+  else rows.sort((a, b) => apptSort(a, b) || TASK_PRI.indexOf(a.priority) - TASK_PRI.indexOf(b.priority));
+  return `<div class="page-head"><div><h1>Tasks</h1><p class="sub">Appointments, calls, emails and follow-ups with a due date</p></div><div class="row">${exportBtn('tk')}<button type="button" class="btn w" data-act="ap-new" data-id="">+ Appointment</button><button type="button" class="btn primary w" data-act="tk-new" data-id="">+ Task</button></div></div>
     <div class="filters"><div class="seg" role="tablist">${tabs.map(([id, l]) => `<button type="button" role="tab" aria-selected="${f.tab === id}" class="${f.tab === id ? 'on' : ''}" data-act="tk-tab" data-tk="${id}">${l} <span class="cnt">${counts[id]}</span></button>`).join('')}</div>
       ${ME ? `<button type="button" class="pill${f.rep === ME ? ' on' : ''}" data-act="tk-me">Mine</button>` : ''}${fsel('tk', 'rep', 'Assigned to', repOpts(true))}</div>
     ${rows.length ? `<div class="panel flush"><ul class="rows">${rows.slice(0, 300).map(taskRow).join('')}</ul></div>` : `<div class="empty"><p>${S.tk.size ? 'Nothing in this list.' : 'No tasks yet. Add one from a company page, or change a lead to Interested and a follow-up task is created for you.'}</p></div>`}`;
@@ -1041,8 +1048,8 @@ function exportData(kind) {
     rows: [...S.ct.values()].map(x => { const a = (d.actByCt.get(x.id) || [])[0]; return [x.first, x.last, ctName(x), coName(x.co), x.title, x.dept, x.email, x.phone, x.mobile, x.role, x.primary ? 'Yes' : 'No', x.optOut ? 'Yes' : 'No', x.dnc ? 'Yes' : 'No', x.notes, a ? isoToYmd(a.at) : '', x.nextFU]; }) };
   if (kind === 'op') return { name: 'matthews-opportunities', head: ['Opportunity Name', 'Company', 'Contact', 'Territory', 'Assigned Rep', 'Equipment Category', 'Equipment Description', 'Estimated Number of Units', 'Estimated Asset Value', 'Auction Date', 'Commission Structure', 'Location of Equipment', 'Opportunity Stage', 'Probability', 'Expected Close Date', 'Notes', 'Date Created', 'Date Updated'],
     rows: [...S.op.values()].map(o => [o.name, coName(o.co), ctName(S.ct.get(o.ct)), oppTerr(o), repName(oppRep(o)), o.category, o.desc, o.units, o.value, o.auctionDate, o.commission, o.location, o.stage, o.prob, o.closeDate, o.notes, isoToYmd(o.created || ''), isoToYmd(o.updated || '')]) };
-  if (kind === 'tk') return { name: 'matthews-tasks', head: ['Task Name', 'Company', 'Contact', 'Assigned User', 'Due Date', 'Task Type', 'Priority', 'Status', 'Notes'],
-    rows: [...S.tk.values()].map(k => [k.name, coName(k.co), ctName(S.ct.get(k.ct)), repName(k.rep), k.due, k.type, k.priority, k.status, k.notes]) };
+  if (kind === 'tk') return { name: 'matthews-tasks', head: ['Task Name', 'Company', 'Contact', 'Assigned User', 'Due Date', 'Time', 'Location', 'Task Type', 'Appointment Kind', 'Priority', 'Status', 'Notes'],
+    rows: [...S.tk.values()].map(k => [k.name, coName(k.co), ctName(S.ct.get(k.ct)), repName(k.rep), k.due, k.time || '', k.location || '', k.type, k.apptKind || '', k.priority, k.status, k.notes]) };
   if (kind === 'ac') return { name: 'matthews-activities', head: ['Company', 'Contact', 'Activity Type', 'Date / Time', 'User', 'Outcome', 'Notes', 'Next Follow-Up Date'],
     rows: [...S.ac.values()].sort((a, b) => a.at < b.at ? 1 : -1).map(a => [coName(a.co), ctName(S.ct.get(a.ct)), a.type, a.at ? new Date(a.at).toLocaleString() : '', repName(a.by), a.outcome, a.notes, a.nextFU]) };
   return null;

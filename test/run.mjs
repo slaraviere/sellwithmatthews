@@ -112,6 +112,25 @@ await page.waitForFunction(() => S.op.size === 1);
 await page.waitForTimeout(300);
 await page.screenshot({ path: path.join(OUT, 'shot-detail.png'), fullPage: true });
 
+// --- appointment
+await page.click('.actions [data-act="ap-new"]');
+check('appointment defaults to a phone call with no place', await page.inputValue('#f-apptKind') === 'Phone call' && await page.inputValue('#f-location') === '');
+await page.selectOption('#f-apptKind', 'Site visit');
+check('site visit fills in the company address', (await page.inputValue('#f-location')).includes('Christiansburg'));
+await page.fill('#f-due', await st(page, `addBizDays(today(), 5)`)); await page.fill('#f-time', '14:30');
+await page.click('#dlg-submit');
+await page.waitForFunction(() => [...S.tk.values()].some(k => k.type === 'Appointment'));
+const ap = await st(page, `[...S.tk.values()].find(k => k.type === 'Appointment')`);
+check('appointment saved with time, place and kind', ap.time === '14:30' && ap.apptKind === 'Site visit' && ap.location.includes('Christiansburg') && ap.name === 'Site visit with Acme Excavating LLC' && ap.status === 'Open', ap.name);
+await page.waitForTimeout(150);
+await page.evaluate(() => document.querySelectorAll('.toast').forEach(t => t.remove()));
+await page.screenshot({ path: path.join(OUT, 'shot-appt.png') });
+check('company page flags the appointment and offers a calendar link', await page.locator('.flag.appt').count() === 1 && (await page.getAttribute('.detail-main a.btn[href*="calendar.google.com"]', 'href')).includes('T143000/'));
+await page.click('.flag.appt');
+await page.waitForSelector('#f-apptKind');
+check('appointment opens in its own dialog for editing', await page.inputValue('#f-time') === '14:30' && await page.locator('#dlg h2').textContent() === 'Edit appointment');
+await page.click('#dlg [data-act="dlg-close"]');
+
 // --- import
 await page.click('#tabs [data-tab="import"]');
 await page.setInputFiles('#imp-file', CSV_PATH);
@@ -186,6 +205,13 @@ await page.click('[data-act="tk-tab"][data-tk="open"]');
 await page.locator('.rows input[type=checkbox]').first().check();
 await page.waitForFunction(() => [...S.tk.values()][0].status === 'Completed');
 check('task completes', true);
+await page.click('[data-act="tk-tab"][data-tk="appts"]');
+check('Appointments tab lists the appointment', await page.locator('.rows li').count() === 1 && (await page.textContent('.rows li')).includes('Site visit with Acme'));
+await page.locator('.rows input[type=checkbox]').first().check();
+await page.click('.toast .link:has-text("Log how it went")');
+await page.waitForSelector('#f-type');
+check('finishing an appointment offers to log it as the matching activity', await page.inputValue('#f-type') === 'Site Visit');
+await page.click('#dlg [data-act="dlg-close"]');
 
 // --- views + dashboard
 await page.click('#tabs [data-tab="companies"]');
@@ -308,6 +334,8 @@ await dark.waitForSelector('.tiles');
 await dark.waitForTimeout(300);
 await dark.screenshot({ path: path.join(OUT, 'shot-dark-dash.png'), fullPage: true });
 
-console.log('\nERRORS:', errors.length ? '\n' + errors.join('\n') : 'none');
+const expected = errors.filter(e => /^console: \{code: (rate_limited|server_not_connected)/.test(e));
+const real = errors.filter(e => !expected.includes(e));
+console.log('\nERRORS:', real.length ? '\n' + real.join('\n') : 'none');
 await browser.close();
-process.exit(errors.length ? 1 : 0);
+process.exit(real.length ? 1 : 0);

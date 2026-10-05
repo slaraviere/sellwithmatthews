@@ -333,3 +333,8 @@ body.anon .bar .search, body.anon .bar-in > .btn, body.anon .tabs, body.anon #me
 .gate-ok { background: var(--good-soft); color: var(--good-ink); border-radius: var(--r); padding: 9px 12px; }
 .gate-card code { background: var(--surface-2); border-radius: 3px; padding: 1px 5px; font-size: 13px; }
 input[type=password] { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 10px; max-width: 100%; min-width: 0; }
+
+/* ---- appointments ---- */
+.flag.appt { background: var(--blue-soft); color: var(--blue-soft-ink); cursor: pointer; }
+input[type=time] { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 10px; max-width: 100%; min-width: 0; }
+.rows-meta a.btn { text-decoration: none; color: var(--ink); }

@@ -41,6 +41,7 @@ const CSV_PATH = path.join(OUT, 'prospects-web.csv');
 writeFileSync(CSV_PATH, csv);
 
 const browser = await launch();
+process.on('exit', () => { if (process.exitCode !== 0 && errors.length) console.log('ERRORS SO FAR:\n' + errors.join('\n')); });
 const errors = [];
 async function newPage(user, opts = {}) {
   const ctx = await browser.newContext({ viewport: opts.viewport || { width: 1380, height: 900 } });
@@ -113,10 +114,29 @@ await page.selectOption('#d-status', 'Interested');
 await page.waitForFunction(() => S.tk.size === 1);
 await st(page, `Store._chain`);
 co = await one(`select lead_status, next_follow_up::text as fu, lead_status_at from companies where name like 'Acme%'`);
-const ct = await one(`select * from contacts`), ac = await one(`select * from activities`), tk = await one(`select *, due_date::text as due from tasks`);
+const ct = await one(`select * from contacts`), ac = await one(`select * from activities`), tk = await one(`select *, due_date::text as due from tasks where task_type <> 'Appointment'`);
 const exp = await st(page, `({ fu: addDays(today(), 7), due: addBizDays(today(), 2) })`);
 check('contact, activity and task rows with links and dates', ct.company_id && ct.is_primary === true && ct.email === 'dale@acmeex.example' && ac.activity_type === 'Phone Call' && ac.contact_id === ct.id && ac.logged_by_id === me.id && tk.due === exp.due && tk.assigned_to_id === me.id && tk.auto_source === 'interested', { tk: tk.due });
 check('company follow-up date and status saved', co.fu === exp.fu && co.lead_status === 'Interested' && !!co.lead_status_at, co);
+// --- appointment: new columns on the tasks table
+await page.click('.actions [data-act="ap-new"]');
+await page.selectOption('#f-apptKind', 'Site visit');
+await page.fill('#f-due', '2026-12-01'); await page.fill('#f-time', '09:15');
+await page.click('#dlg-submit');
+await page.waitForFunction(() => [...S.tk.values()].some(k => k.type === 'Appointment'));
+await st(page, `Store._chain`);
+const apRow = await one(`select *, due_date::text as due from tasks where task_type = 'Appointment'`);
+check('appointment row: time, place and kind columns', apRow.due === '2026-12-01' && apRow.due_time === '09:15' && apRow.appointment_kind === 'Site visit' && apRow.location.includes('Christiansburg') && apRow.name === 'Site visit with Acme Excavating LLC', { t: apRow.due_time, loc: apRow.location });
+// a database that has not had the appointments update yet still saves the task
+await queue(() => db.exec(`alter table public.tasks drop column due_time, drop column location, drop column appointment_kind`));
+const coId0 = await st(page, `[...S.co.values()][0].id`);
+await st(page, `Store.add('tk', { id: 'rbehind1', name: 'Phone call with Acme', co: '${coId0}', type: 'Appointment', due: '2026-12-02', time: '11:00', location: '', apptKind: 'Phone call', priority: 'Normal', status: 'Open', notes: '', created: nowIso() }).then(() => 'ok', e => e.code + ' ' + e.message)`).then(r => check('database without the update: task still saves', r === 'ok', r));
+check('...and the rep is told the time was not stored', await st(page, `Store.behind === true`) && (await page.textContent('.toast.err')).includes('database gets its update'));
+await queue(() => db.exec(readFileSync(path.join(ROOT, 'supabase', 'migrations', '20261005200000_appointments.sql'), 'utf8')));
+check('running the update twice is harmless', (await one(`select count(*)::int n from information_schema.columns where table_name = 'tasks' and column_name in ('due_time', 'location', 'appointment_kind')`)).n === 3);
+await queue(() => db.exec(readFileSync(path.join(ROOT, 'supabase', 'migrations', '20261005200000_appointments.sql'), 'utf8')));
+await st(page, `document.querySelectorAll('.toast').forEach(t => t.remove())`);
+
 await st(page, `openOpp(null, [...S.co.values()][0].id)`);
 await page.fill('#f-units', '2'); await page.fill('#f-value', '85000.50'); await page.selectOption('#f-stage', 'Equipment Confirmed'); await page.fill('#f-auctionDate', '2026-11-14');
 await page.click('#dlg-submit');
