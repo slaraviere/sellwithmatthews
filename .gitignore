@@ -1,4 +1,6 @@
 node_modules/
 test/out/
+public/
+.vercel/
 .DS_Store
 .env*

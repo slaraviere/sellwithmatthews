@@ -1,13 +1,10 @@
-import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'test', 'out');
 mkdirSync(OUT, { recursive: true });
-let chromium;
-try { ({ chromium } = createRequire(import.meta.url)('playwright')); }
-catch (e) { ({ chromium } = createRequire('/opt/npm-tools/node_modules/')('playwright')); }
+import { launch } from './browser.mjs';
 
 const page_html = readFileSync(path.join(ROOT, 'dist', 'matthews-consignment-crm.html'), 'utf8');
 const skeleton = `<!doctype html><html><head><meta charset="utf8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style></head><body>${page_html}</body></html>`;
@@ -29,7 +26,7 @@ Lone Pine Logging,,Bluefield,WV,24701,,304-555-0140,Logging,B,Forestry Equipment
 const CSV_PATH = path.join(OUT, 'prospects.csv');
 writeFileSync(CSV_PATH, csv);
 
-const browser = await chromium.launch();
+const browser = await launch();
 const errors = [];
 async function newPage(opts = {}) {
   const ctx = await browser.newContext({ viewport: opts.viewport || { width: 1380, height: 900 }, colorScheme: opts.dark ? 'dark' : 'light' });

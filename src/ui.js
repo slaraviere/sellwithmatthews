@@ -1,7 +1,7 @@
 /* ============================================================
    App state, rendering, dialogs
    ============================================================ */
-const CAP = { db: null, user: null, downloads: null, sample: null, mcp: null, uid: null, canWrite: true, checked: false };
+const CAP = { db: null, user: null, downloads: null, sample: null, mcp: null, uid: null, canWrite: true, isAdmin: false, checked: false };
 let ME = null;
 const CO_FILTER0 = { q: '', terr: '', rep: '', industry: '', asset: '', priority: '', status: '', view: 'all', sort: 'name', dir: 1, limit: 100 };
 const V = {
@@ -124,7 +124,7 @@ function render() {
   }
 }
 const loadingHtml = msg => `<div class="empty"><div class="spin" aria-hidden="true"></div><p>${esc(msg)}</p></div>`;
-const noDbHtml = () => `<div class="empty"><h2>The CRM database isn't available in this view</h2><p>Open this page from Claude while signed in to your Matthews Auctioneers account. Companies, contacts and activity load from the shared database once you're signed in.</p></div>`;
+const noDbHtml = () => PLATFORM === 'web' ? webGateHtml() : `<div class="empty"><h2>The CRM database isn't available in this view</h2><p>Open this page from Claude while signed in to your Matthews Auctioneers account. Companies, contacts and activity load from the shared database once you're signed in.</p></div>`;
 
 function renderChrome() {
   for (const b of $$('#tabs [data-tab]')) b.classList.toggle('on', b.dataset.tab === V.tab);
@@ -142,7 +142,7 @@ function renderChrome() {
   const ob = $('#out-badge');
   if (ob) { let n = 0; if (S.ready) for (const d of S.dr.values()) if (d.by === ME || !d.by) n++; ob.textContent = n ? String(n) : ''; ob.hidden = !n; }
   const chip = $('#me-chip');
-  if (chip) { chip.textContent = ME && S.team[ME] ? S.team[ME].name : 'Who are you?'; chip.hidden = !S.ready; }
+  if (chip) { chip.textContent = ME && S.team[ME] ? (S.team[ME].name || 'Account') : 'Who are you?'; chip.hidden = !S.ready; chip.title = PLATFORM === 'web' ? 'Your account' : 'Change who you are'; }
   document.body.classList.toggle('ro', !CAP.canWrite);
   const ban = $('#banners');
   let h = '';
@@ -180,6 +180,9 @@ function errText(e) {
   const code = e && e.code;
   if (code === 'quota_exceeded') return "The CRM's storage is full, so this wasn't saved. Export a backup from Import / Export and tell the CRM owner.";
   if (code === 'invalid_argument') return "This wasn't saved. You may have view-only access, or the record is too large.";
+  if (code === 'denied') return "This wasn't saved: your account isn't allowed to change it. Ask a CRM admin.";
+  if (code === 'conflict') return "This wasn't saved because another record already uses the same value (for a team member, the same email).";
+  if (code === 'missing_link') return "This wasn't saved because a record it points to was removed. Reload the page and try again.";
   if (code === 'revoked' || code === 'not_granted') return "This wasn't saved because the page lost access to the database. Reload and try again.";
   return "This wasn't saved. Check your connection, reload the page and try again.";
 }
@@ -626,11 +629,22 @@ async function reassignAll() {
 function openRep(id) {
   const r = id ? S.team[id] : null;
   const spec = [{ k: 'name', label: 'Name', req: true, full: true, max: 60 }, { k: 'active', label: 'Active', type: 'check', full: true }];
+  const web = PLATFORM === 'web';
+  if (web) {
+    spec.splice(1, 0, { k: 'email', label: 'Sign-in email', type: 'email', full: true, max: 200, hint: 'They get access once they create an account or accept an invite with this email. Leave blank for a name-only entry with no access.' });
+    spec.push({ k: 'admin', label: 'Admin: can add, change and remove team members', type: 'check', full: true });
+  }
   openDialog({
     title: r ? 'Edit team member' : 'Add team member', body: fieldsHtml(spec, r ? Object.assign({}, r, { active: r.active !== false }) : { active: true }),
     onSubmit: () => guard(async () => {
       const v = readFields(spec);
       if (!v.name) return dlgMsg('Enter a name.');
+      if (web) {
+        if (!CAP.isAdmin) return dlgMsg('Only a CRM admin can add or change team members.');
+        v.email = (v.email || '').toLowerCase();
+        if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) return dlgMsg('Enter a complete email address, or leave it blank.');
+        if (id === ME && (!v.admin || !v.active)) return dlgMsg('You can\'t remove your own admin access or deactivate yourself. Ask another admin.');
+      }
       closeDialog();
       await Store.cfgPatch('team', id || uid(), v);
     }),
@@ -990,7 +1004,7 @@ SCREENS.territories = function () {
       <tr class="tr-un"${un ? ' data-act="go-view" data-view="unassigned"' : ''}><td>${terrTag(UNASSIGNED)}</td><td colspan="4" class="muted">No confident match by ZIP, city + state, or county + state. Flagged for review.</td><td class="num">${un}</td></tr></tbody></table></div>`
       : `<div class="empty"><h2>No territories yet</h2><p>Add a territory with its ZIP codes, cities and counties. New and imported companies are matched to it automatically.</p></div>`}
     <div class="page-head second"><div><h2>Team</h2><p class="sub">Reps who can be assigned companies, tasks, opportunities and territories</p></div><button type="button" class="btn w" data-act="rep-new">+ Team member</button></div>
-    ${reps.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Status</th><th class="num">Companies</th><th class="num">Open tasks</th></tr></thead><tbody>${reps.map(id => { const r = S.team[id]; let nc = 0, nt = 0; for (const c of S.co.values()) if (c.rep === id) nc++; for (const k of S.tk.values()) if (k.rep === id && (k.status === 'Open' || k.status === 'Snoozed')) nt++; return `<tr data-act="rep-open" data-id="${esc(id)}"><td class="co"><button type="button" class="name" data-act="rep-open" data-id="${esc(id)}">${esc(r.name)}</button>${id === ME ? ' <span class="muted">(you)</span>' : ''}</td><td>${r.active === false ? '<span class="flag">Inactive</span>' : 'Active'}</td><td class="num">${nc}</td><td class="num">${nt}</td></tr>`; }).join('')}</tbody></table></div>` : `<div class="empty"><p>No team members yet. Each person is added the first time they open the CRM and enter their name.</p></div>`}`;
+    ${reps.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Status</th><th class="num">Companies</th><th class="num">Open tasks</th></tr></thead><tbody>${reps.map(id => { const r = S.team[id]; let nc = 0, nt = 0; for (const c of S.co.values()) if (c.rep === id) nc++; for (const k of S.tk.values()) if (k.rep === id && (k.status === 'Open' || k.status === 'Snoozed')) nt++; return `<tr data-act="rep-open" data-id="${esc(id)}"><td class="co"><button type="button" class="name" data-act="rep-open" data-id="${esc(id)}">${esc(r.name)}</button>${id === ME ? ' <span class="muted">(you)</span>' : ''}</td><td>${r.active === false ? '<span class="flag">Inactive</span>' : 'Active'}${PLATFORM === 'web' ? `<div class="muted">${esc(r.email || 'No sign-in email')}${r.admin ? ' · admin' : ''}${r.email && !r.uid ? ' · has not signed in yet' : ''}</div>` : ''}</td><td class="num">${nc}</td><td class="num">${nt}</td></tr>`; }).join('')}</tbody></table></div>` : `<div class="empty"><p>${PLATFORM === 'web' ? 'No team members yet. Add each rep with the email address they will sign in with.' : 'No team members yet. Each person is added the first time they open the CRM and enter their name.'}</p></div>`}`;
 };
 
 /* ---------- Review queue ---------- */

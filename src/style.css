@@ -323,3 +323,13 @@ dialog::backdrop { background: rgba(5, 8, 12, .55); }
 .filters #flt-out-src { max-width: 340px; }
 .draft-gmail { background: var(--good-soft); color: var(--good-ink); border-radius: var(--r); padding: 6px 10px; font-size: 14px; }
 .draft-gmail a { color: inherit; font-weight: 600; }
+
+/* ---- website build: sign-in gate ---- */
+body.anon .bar .search, body.anon .bar-in > .btn, body.anon .tabs, body.anon #me-chip { display: none !important; }
+.gate { display: flex; justify-content: center; padding-block: clamp(16px, 8vh, 80px); }
+.gate-card { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--brand-red); border-radius: var(--r); padding: 26px 28px; width: min(440px, 100%); display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow); }
+.gate-form { display: flex; flex-direction: column; gap: 12px; }
+.gate-links { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.gate-ok { background: var(--good-soft); color: var(--good-ink); border-radius: var(--r); padding: 9px 12px; }
+.gate-card code { background: var(--surface-2); border-radius: 3px; padding: 1px 5px; font-size: 13px; }
+input[type=password] { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 7px 10px; max-width: 100%; min-width: 0; }

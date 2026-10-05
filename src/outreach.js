@@ -122,7 +122,8 @@ async function aiDraftMany(targets, extra, opts) {
 }
 function aiErrText(e) {
   switch (e && e.code) {
-    case 'not_granted': return 'AI drafting was not allowed for this page, so no draft was written. Reload the page and choose Allow when Claude asks.';
+    case 'not_configured': return 'AI drafting is not set up on this site yet. Add an Anthropic API key named ANTHROPIC_API_KEY in the Vercel project settings, then redeploy.';
+    case 'not_granted': return PLATFORM === 'web' ? 'Your account is not allowed to use AI drafting. Sign in again, or ask a CRM admin.' : 'AI drafting was not allowed for this page, so no draft was written. Reload the page and choose Allow when Claude asks.';
     case 'sampling_disabled': case 'not_declared': case 'capability_disabled': case 'capability_removed': return 'AI drafting is not available for your account in this view.';
     case 'rate_limited': return 'Claude\'s usage limit was reached. Wait a few minutes and try again.';
     case 'session_expired': return 'Your Claude session expired. Sign in again, then retry.';
@@ -191,7 +192,7 @@ function openDraft(coId, ctId) {
   let busy = false;
   openDialog({
     title: 'Draft email to ' + c.name, wide: true, submitLabel: 'Draft with AI',
-    sub: 'Claude writes the draft from this company\'s record and activity. You review and send it yourself. Drafting uses your own Claude usage.',
+    sub: 'Claude writes the draft from this company\'s record and activity. You review and send it yourself.' + (PLATFORM === 'web' ? '' : ' Drafting uses your own Claude usage.'),
     body: fieldsHtml(spec, { ct: pre, purpose: pickPurpose(c, info) }) + `<div id="dr-stream" class="stream pre" hidden></div>`,
     onSubmit: () => {
       if (busy) return;
@@ -224,10 +225,13 @@ function openDraft(coId, ctId) {
 function openDraftCard(id) {
   const d = S.dr.get(id);
   if (!d) return;
-  openDialog({ title: 'Email draft', wide: true, noFocus: true, cancelLabel: 'Keep in queue', body: `<ul class="cards drafts">${draftCard(d)}</ul><p class="muted">The CRM does not send email. ${CAP.mcp ? 'Create a Gmail draft, or copy this into your own email. Send it,' : 'Copy this into your own email, send it,'} then mark it sent. It stays in the Outreach queue until you do.</p>` });
+  openDialog({ title: 'Email draft', wide: true, noFocus: true, cancelLabel: 'Keep in queue', body: `<ul class="cards drafts">${draftCard(d)}</ul><p class="muted">The CRM does not send email. ${CAP.mcp ? 'Create a Gmail draft, or copy this into your own email. Send it,' : PLATFORM === 'web' ? 'Open it in Gmail or copy it into your own email, send it,' : 'Copy this into your own email, send it,'} then mark it sent. It stays in the Outreach queue until you do.</p>` });
 }
 function mailtoHref(to, subject, body) {
   return 'mailto:' + encodeURIComponent(to).replace(/%40/g, '@') + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(cap(body, 1800));
+}
+function gmailComposeHref(to, subject, body) {
+  return 'https://mail.google.com/mail/?view=cm&fs=1&to=' + encodeURIComponent(to) + '&su=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(cap(body, 4000));
 }
 function draftCard(d) {
   const c = S.co.get(d.co), ct = S.ct.get(d.ct);
@@ -242,7 +246,7 @@ function draftCard(d) {
     <label class="vh" for="dr-sub-${id}">Subject</label><input id="dr-sub-${id}" class="draft-sub" type="text" maxlength="200" value="${esc(d.subject)}" data-hold data-change="dr-edit" data-input="dr-live" data-id="${id}" data-key="subject">
     <label class="vh" for="dr-body-${id}">Body</label><textarea id="dr-body-${id}" rows="${Math.min(16, Math.max(7, Math.ceil(d.body.length / 62) + (d.body.match(/\n/g) || []).length))}" maxlength="3500" data-hold data-change="dr-edit" data-input="dr-live" data-id="${id}" data-key="body">${esc(d.body)}</textarea>
     ${d.gmailAt ? `<div class="draft-gmail">In your Gmail drafts since ${esc(fmtDateTime(d.gmailAt))}.${d.gmailUrl ? ` <a href="${esc(d.gmailUrl)}" target="_blank" rel="noopener noreferrer">Open in Gmail</a>` : ''} Send it there, then mark it sent here.</div>` : ''}
-    <div class="row">${CAP.mcp && !stop ? `<button type="button" class="btn sm ai w" data-act="dr-gmail" data-id="${id}">${d.gmailAt ? 'Add to Gmail again' : 'Create Gmail draft'}</button>` : ''}<button type="button" class="btn sm" data-act="dr-copy" data-id="${id}" data-part="subject">Copy subject</button><button type="button" class="btn sm" data-act="dr-copy" data-id="${id}" data-part="body">Copy body</button><a class="btn sm" id="dr-mail-${id}" href="${esc(mailtoHref(to, d.subject, d.body))}" target="_blank" rel="noopener noreferrer" title="Opens your email app where the browser allows it. Copy always works.">Open in email app</a>
+    <div class="row">${CAP.mcp && !stop ? `<button type="button" class="btn sm ai w" data-act="dr-gmail" data-id="${id}">${d.gmailAt ? 'Add to Gmail again' : 'Create Gmail draft'}</button>` : ''}<button type="button" class="btn sm" data-act="dr-copy" data-id="${id}" data-part="subject">Copy subject</button><button type="button" class="btn sm" data-act="dr-copy" data-id="${id}" data-part="body">Copy body</button>${PLATFORM === 'web' && !stop ? `<a class="btn sm ai" id="dr-gm-${id}" href="${esc(gmailComposeHref(to, d.subject, d.body))}" target="_blank" rel="noopener noreferrer" title="Opens a new Gmail message with this draft filled in">Open in Gmail</a>` : ''}<a class="btn sm" id="dr-mail-${id}" href="${esc(mailtoHref(to, d.subject, d.body))}" target="_blank" rel="noopener noreferrer" title="Opens your email app where the browser allows it. Copy always works.">Open in email app</a>
       <span class="grow"></span><button type="button" class="btn sm w" data-act="dr-skip" data-id="${id}">Discard</button>${CAP.sample && c ? `<button type="button" class="btn sm w" data-act="dr-redo" data-id="${id}">Redraft</button>` : ''}<button type="button" class="btn sm primary w" data-act="dr-sent" data-id="${id}"${stop ? ' disabled' : ''}>Mark as sent</button></div>
   </li>`;
 }
@@ -350,10 +354,10 @@ SCREENS.outreach = function () {
     <div class="fld"><label for="out-extra">Anything every email in this batch should mention? (optional)</label><input id="out-extra" type="text" maxlength="800" value="${esc(f.extra || '')}" data-hold data-input="out-opt" data-key="extra" placeholder="For example: our next equipment auction closes November 14"></div>
     <p><b>${t.list.length.toLocaleString()}</b> ${t.list.length === 1 ? 'company is' : 'companies are'} ready to email in this list${t.list.length ? ': ' + esc(t.list.slice(0, 4).map(x => x.c.name).join(', ')) + (t.list.length > 4 ? ' and ' + (t.list.length - 4) + ' more' : '') : ''}.${skipText ? ` <span class="muted">Left out: ${esc(skipText)}.</span>` : ''}</p>
     ${run ? `<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="${run.total}" aria-valuenow="${run.done}"><span style="width:${Math.round(run.done / run.total * 100)}%"></span></div><div class="row"><span class="muted">Drafted ${run.done} of ${run.total}. Claude thinks for a while before each group of five.</span><button type="button" class="btn sm" data-act="dr-stop">Stop</button></div>`
-      : (ai ? `<div class="row"><button type="button" class="btn primary w" data-act="dr-batch"${n ? '' : ' disabled'}>Draft ${n || ''} ${n === 1 ? 'email' : 'emails'} with AI</button><span class="muted">Uses your own Claude usage. Claude asks you to allow it the first time.</span></div>` : `<p class="err-text">AI drafting is not available in this view. Open the CRM from Claude while signed in to use it.</p>`)}
+      : (ai ? `<div class="row"><button type="button" class="btn primary w" data-act="dr-batch"${n ? '' : ' disabled'}>Draft ${n || ''} ${n === 1 ? 'email' : 'emails'} with AI</button><span class="muted">${PLATFORM === 'web' ? 'Runs on the company\'s Claude API key. Each batch takes up to a minute.' : 'Uses your own Claude usage. Claude asks you to allow it the first time.'}</span></div>` : `<p class="err-text">AI drafting is not available in this view. Open the CRM from Claude while signed in to use it.</p>`)}
   </section>`;
   const queue = `<section class="panel"><div class="panel-h"><h3>Ready to review and send <span class="cnt">${show.length}</span></h3>${others.length ? `<button type="button" class="pill${f.all ? ' on' : ''}" data-act="out-all">Show everyone's (${mine.length + others.length})</button>` : ''}</div>
-    <p class="muted">The CRM does not send email. ${CAP.mcp ? 'Create a Gmail draft (it lands in your own Gmail drafts folder) or copy the text' : 'Copy a draft'} into your own email, send it, then mark it sent. That logs the email on the company, counts the outreach attempt and sets the next follow-up ${Number(cfg.gap) || 4} business days out.</p>
+    <p class="muted">The CRM does not send email. ${CAP.mcp ? 'Create a Gmail draft (it lands in your own Gmail drafts folder) or copy the text' : PLATFORM === 'web' ? 'Open a draft in Gmail or copy it' : 'Copy a draft'} into your own email, send it, then mark it sent. That logs the email on the company, counts the outreach attempt and sets the next follow-up ${Number(cfg.gap) || 4} business days out.</p>
     ${show.length ? `<ul class="cards drafts">${show.slice(0, 40).map(draftCard).join('')}</ul>${show.length > 40 ? `<p class="muted">Showing 40 of ${show.length}.</p>` : ''}` : `<p class="muted">No drafts waiting. Draft a batch above, or use Draft email on a company page.</p>`}</section>`;
   const settings = `<section class="panel"><div class="panel-h"><h3>What the AI knows and how it signs off</h3><button type="button" class="btn sm" data-act="out-cfg">${f.cfgOpen ? 'Hide' : 'Edit'}</button></div>
     ${f.cfgOpen ? `<div class="grid">
