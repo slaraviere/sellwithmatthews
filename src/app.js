@@ -195,5 +195,6 @@ function startShell() {
   wire();
   wirePipeline();
   wireReport();
+  wireLookup();
   render();
 }

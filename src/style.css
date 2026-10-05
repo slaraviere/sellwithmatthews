@@ -389,3 +389,16 @@ input[type=time] { background: var(--surface); border: 1px solid var(--line); bo
 .rp-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 @media (max-width: 900px) { .rp-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 620px) { .hero-main { flex-direction: column; align-items: flex-start; gap: 8px; } .cols { height: 170px; } }
+
+/* ---- check first (new company / contact search) ---- */
+#lk-q { font-size: 17px; padding: 10px 12px; }
+.lk-out { display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
+.lk-list { border: 1px solid var(--line); border-radius: var(--r); max-height: 38vh; overflow-y: auto; }
+.lk-item { display: flex; gap: 10px; align-items: center; padding: 0 10px 0 0; border-bottom: 1px solid var(--line-2); }
+.lk-item:last-child { border-bottom: 0; }
+.lk-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: left; background: none; border: 0; padding: 8px 10px; overflow-wrap: anywhere; }
+.lk-main:hover, .lk-main:focus-visible { background: var(--surface-2); }
+.lk-more { padding: 6px 10px; font-size: 13px; }
+.lk-none { background: var(--good-soft); color: var(--good-ink); border-radius: var(--r); padding: 10px 12px; }
+.lk-new { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 4px; }
+.lk-new .btn { overflow-wrap: anywhere; text-align: left; }

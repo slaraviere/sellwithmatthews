@@ -102,6 +102,10 @@ let co = await one(`select * from companies where name like 'Acme%'`);
 check('company row: territory by ZIP, defaults, array column', co.territory_code === 'NRV' && co.territory_match === 'ZIP' && co.state === 'VA' && co.lead_status === 'New' && co.outreach_attempts_base === 0 && JSON.stringify(co.asset_potential) === '["Heavy Equipment","Trucks"]' && co.assigned_rep_id === me.id && co.next_follow_up === null, { terr: co.territory_code, assets: co.asset_potential });
 
 await page.click('.detail-side [data-act="ct-new"]');
+await page.fill('#lk-q', 'acme');
+check('new contact: search first finds the existing company', (await page.textContent('#lk-cos')).includes('Acme'));
+await page.fill('#lk-q', 'Dale Acme');
+await page.click('#lk-add');
 await page.fill('#f-first', 'Dale'); await page.fill('#f-last', 'Acme'); await page.fill('#f-email', 'Dale@AcmeEx.example'); await page.selectOption('#f-role', 'Owner');
 await page.click('#dlg-submit');
 await page.waitForFunction(() => S.ct.size === 1);

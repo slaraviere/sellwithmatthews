@@ -351,10 +351,10 @@ function findExactCompany(v, exceptId) {
   }
   return null;
 }
-function openCompany(id) {
+function openCompany(id, pre) {
   const c = id ? S.co.get(id) : null;
   const spec = companySpec(c);
-  const vals = c ? Object.assign({}, c, { terrPick: c.terrHow === 'Manual' ? c.terr : '' }) : { status: 'New', rep: ME || '' };
+  const vals = c ? Object.assign({}, c, { terrPick: c.terrHow === 'Manual' ? c.terr : '' }) : Object.assign({ status: 'New', rep: ME || '' }, pre || {});
   let confirmed = false;
   openDialog({
     title: c ? 'Edit company' : 'New company', wide: true,
@@ -402,12 +402,12 @@ function contactSpec(coId) {
     { k: 'notes', label: 'Notes', type: 'textarea', full: true },
   ];
 }
-function openContact(id, coId) {
+function openContact(id, coId, pre) {
   const c = id ? S.ct.get(id) : null;
   if (c) coId = c.co;
   const spec = [coPickerField(coId)].concat(contactSpec(coId));
   const others = coId ? (derive().ctByCo.get(coId) || []).filter(x => x.id !== id) : [];
-  const vals = c || { primary: coId ? others.length === 0 : false };
+  const vals = c || Object.assign({ primary: coId ? others.length === 0 : false }, pre || {});
   let hist = '';
   if (c) {
     const acts = (derive().actByCt.get(c.id) || []).slice(0, 8);
