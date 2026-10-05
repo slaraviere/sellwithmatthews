@@ -351,10 +351,10 @@ function findExactCompany(v, exceptId) {
   }
   return null;
 }
-function openCompany(id) {
+function openCompany(id, pre) {
   const c = id ? S.co.get(id) : null;
   const spec = companySpec(c);
-  const vals = c ? Object.assign({}, c, { terrPick: c.terrHow === 'Manual' ? c.terr : '' }) : { status: 'New', rep: ME || '' };
+  const vals = c ? Object.assign({}, c, { terrPick: c.terrHow === 'Manual' ? c.terr : '' }) : Object.assign({ status: 'New', rep: ME || '' }, pre || {});
   let confirmed = false;
   openDialog({
     title: c ? 'Edit company' : 'New company', wide: true,
@@ -402,12 +402,12 @@ function contactSpec(coId) {
     { k: 'notes', label: 'Notes', type: 'textarea', full: true },
   ];
 }
-function openContact(id, coId) {
+function openContact(id, coId, pre) {
   const c = id ? S.ct.get(id) : null;
   if (c) coId = c.co;
   const spec = [coPickerField(coId)].concat(contactSpec(coId));
   const others = coId ? (derive().ctByCo.get(coId) || []).filter(x => x.id !== id) : [];
-  const vals = c || { primary: coId ? others.length === 0 : false };
+  const vals = c || Object.assign({ primary: coId ? others.length === 0 : false }, pre || {});
   let hist = '';
   if (c) {
     const acts = (derive().actByCt.get(c.id) || []).slice(0, 8);
@@ -657,9 +657,9 @@ const SCREENS = {};
 function tile(label, value, act, attrs, tone, sub) {
   return `<button type="button" class="tile${tone ? ' ' + tone : ''}" data-act="${act}" ${attrs || ''}><span class="tile-n">${esc(value)}</span><span class="tile-l">${esc(label)}</span>${sub ? `<span class="tile-s">${esc(sub)}</span>` : ''}</button>`;
 }
-function barList(title, rows, emptyMsg) {
+function barList(title, rows, emptyMsg, note) {
   const max = Math.max(1, ...rows.map(r => r.n));
-  return `<section class="panel"><h3>${esc(title)}</h3>${rows.length ? `<div class="bars" role="list">${rows.map(r => `<div class="bar-row" role="listitem" title="${esc(r.label + ': ' + r.n + (r.sub ? ' · ' + r.sub : ''))}"><span class="bar-l">${r.html || esc(r.label)}</span><span class="bar-t"><span class="bar-f" style="width:${(r.n / max * 100).toFixed(1)}%"></span></span><span class="bar-n">${r.n}</span><span class="bar-s">${esc(r.sub || '')}</span></div>`).join('')}</div>` : `<p class="muted">${esc(emptyMsg)}</p>`}</section>`;
+  return `<section class="panel"><h3>${esc(title)}</h3>${rows.length ? `<div class="bars" role="list">${rows.map(r => `<div class="bar-row" role="listitem" title="${esc(r.label + ': ' + r.n + (r.sub ? ' · ' + r.sub : ''))}"><span class="bar-l">${r.html || esc(r.label)}</span><span class="bar-t"><span class="bar-f" style="width:${(r.n / max * 100).toFixed(1)}%"></span></span><span class="bar-n">${r.n}</span><span class="bar-s">${esc(r.sub || '')}</span></div>`).join('')}</div>${note ? `<p class="muted">${esc(note)}</p>` : ''}` : `<p class="muted">${esc(emptyMsg)}</p>`}</section>`;
 }
 SCREENS.dashboard = function () {
   const d = derive(), t = today(), ws = weekStart(), we = weekEnd(), f = V.dash;
@@ -739,7 +739,7 @@ SCREENS.dashboard = function () {
       ${tile('Companies with equipment', n.hasEquip, 'go-view', 'data-view="hasequip"')}
       ${tile('Open opportunities', openOpps, 'go-opps', '', '', openVal ? money(openVal) + ' est. value' : '')}
     </div>
-    <h2 class="sec">This week</h2>
+    <h2 class="sec">This week <button type="button" class="link sec-link" data-act="tab" data-tab="report">See the scoreboard</button></h2>
     <div class="tiles">
       ${tile('Calls this week', calls, 'go-acts', 'data-type="calls"')}
       ${tile('Emails this week', emails, 'go-acts', 'data-type="Email Sent"')}

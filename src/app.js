@@ -194,5 +194,7 @@ function startShell() {
   if (TABS.some(t => t[0] === h)) V.tab = h;
   wire();
   wirePipeline();
+  wireReport();
+  wireLookup();
   render();
 }
