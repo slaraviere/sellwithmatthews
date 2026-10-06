@@ -54,6 +54,9 @@ check('rep saved with uid', await st(page, `Object.values(S.team).some(r => r.na
 
 // --- add a company by hand
 await page.click('.bar [data-act="co-new"]');
+await page.fill('#lk-q', 'Acme Excavating LLC');
+check('add new: offers a company or an individual', (await page.textContent('#lk-add')).includes('as a company') && (await page.textContent('#lk-add-alt')).includes('individual'));
+await page.click('#lk-add');
 await page.fill('#f-name', 'Acme Excavating LLC');
 await page.fill('#f-city', 'Christiansburg'); await page.fill('#f-state', 'virginia'); await page.fill('#f-zip', '24073');
 await page.fill('#f-phone', '5405550177');
@@ -421,6 +424,56 @@ await page.waitForTimeout(100);
 await page.screenshot({ path: path.join(OUT, 'shot-lookup.png') });
 await page.click('#dlg [data-act="dlg-close"]');
 check('search: nothing was added along the way', JSON.stringify(await st(page, `[S.co.size, S.ct.size]`)) === JSON.stringify(lkBefore));
+
+// --- individuals: a person who isn't part of a company
+await page.click('.bar [data-act="co-new"]');
+await page.fill('#lk-q', 'Mary Whitfield');
+await page.click('#lk-add-alt');
+await page.waitForSelector('#f-first');
+check('individual: one form, name carried in', (await page.textContent('#dlg h2')).includes('New individual') && await page.inputValue('#f-first') === 'Mary' && await page.inputValue('#f-last') === 'Whitfield' && await page.locator('#f-industry').count() === 0);
+await page.fill('#f-mobile', '276-555-0190'); await page.fill('#f-email', 'Mary.Whitfield@Example.com');
+await page.fill('#f-city', 'Galax'); await page.fill('#f-state', 'VA');
+await page.check('#f-lines-1');
+await page.click('#dlg-submit');
+await page.waitForSelector('.detail-head');
+await page.waitForFunction(() => [...S.ct.values()].some(x => x.email === 'mary.whitfield@example.com'));
+const mary = await st(page, `(() => { const c = [...S.co.values()].find(c => c.name === 'Mary Whitfield'); const x = [...S.ct.values()].find(x => x.co === c.id); return { industry: c.industry, terr: c.terr, status: c.status, lines: c.lines, phone: c.phone, person: isPerson(c), ct: x && { first: x.first, last: x.last, email: x.email, primary: x.primary, mobile: x.mobile }, n: [...S.ct.values()].filter(x => x.co === c.id).length }; })()`);
+check('individual: record and contact created together', mary.person && mary.status === 'New' && mary.terr && mary.terr !== 'UNASSIGNED' && JSON.stringify(mary.lines) === '["Estate"]' && mary.n === 1 && mary.ct.first === 'Mary' && mary.ct.email === 'mary.whitfield@example.com' && mary.ct.primary === true, mary);
+check('individual: has a page where calls and appointments can be logged', (await page.textContent('.detail-head h1')).includes('Mary Whitfield') && await page.locator('.actions [data-act="log"][data-type="Phone Call"]').count() === 1 && await page.locator('[data-act="ap-new"]').count() >= 1);
+await page.waitForFunction(() => document.querySelector('.detail-side').textContent.includes('mary.whitfield@example.com'), null, { timeout: 5000 }).catch(() => {});
+check('individual: their page shows them as the contact', (await page.textContent('.detail-side')).includes('mary.whitfield@example.com'));
+await page.screenshot({ path: path.join(OUT, 'shot-individual.png'), fullPage: true });
+await page.click('.bar [data-act="co-new"]');
+await page.fill('#lk-q', 'mary whitfield');
+check('individual: found by the search and marked Individual', (await page.textContent('#lk-cos')).includes('Mary Whitfield') && (await page.textContent('#lk-cos')).includes('Individual'));
+await page.click('#lk-add-alt');
+await page.waitForSelector('#f-first');
+await page.fill('#f-mobile', '(276) 555-0190');
+await page.click('#dlg-submit');
+check('individual: warns before adding the same person twice', (await page.textContent('#dlg-msg')).includes('same phone number') && (await page.textContent('#dlg-submit')) === 'Save anyway');
+await page.click('#dlg [data-act="dlg-close"]');
+await st(page, `Store.add('ct', { id: 'orph1', first: 'Otis', last: 'Lone', email: 'otis@lone.example', phone: '', mobile: '336-555-0161', co: '', created: nowIso() })`);
+await page.click('#tabs [data-tab="contacts"]');
+await page.waitForFunction(() => S.ct.has('orph1') && document.querySelector('#main .tbl') && document.querySelector('#main .tbl').textContent.includes('Otis Lone'));
+check('contacts: one attached to nothing is flagged', (await page.textContent('#main .tbl')).includes('Not attached'));
+await page.click('#main [data-act="ct-open"][data-id="orph1"] >> nth=0');
+await page.waitForSelector('[data-act="ct-person"]');
+await page.click('[data-act="ct-person"]');
+await page.waitForFunction(() => document.querySelector('#dlg h2') && document.querySelector('#dlg h2').textContent.includes('New individual'));
+check('unattached contact: details carried into the individual form', await page.inputValue('#f-first') === 'Otis' && await page.inputValue('#f-email') === 'otis@lone.example' && await page.inputValue('#f-mobile') === '336-555-0161');
+await page.click('#dlg-submit');
+await page.waitForFunction(() => S.ct.get('orph1') && S.ct.get('orph1').co);
+const otis = await st(page, `(() => { const x = S.ct.get('orph1'), c = S.co.get(x.co); return { co: c && c.name, person: isPerson(c), primary: x.primary, copies: [...S.ct.values()].filter(y => y.email === 'otis@lone.example').length }; })()`);
+check('unattached contact: moved onto their own page, not copied', otis.co === 'Otis Lone' && otis.person && otis.primary === true && otis.copies === 1, otis);
+await page.click('#tabs [data-tab="contacts"]');
+await page.click('#main [data-act="ct-new"]');
+await page.fill('#lk-q', 'Brand New Person');
+check('new contact with no company: becomes an individual', await st(page, `document.querySelector('#lk-add').dataset.what`) === 'person' && (await page.textContent('#lk-add')).includes('as an individual'));
+await page.click('#dlg [data-act="dlg-close"]');
+await page.click('#tabs [data-tab="companies"]');
+await page.waitForSelector('#main .tbl');
+await st(page, `V.co.view = 'all'; renderNow()`);
+check('companies list: individuals are marked', await page.locator('#main .tbl tr:has-text("Mary Whitfield") .st:has-text("Individual")').count() === 1);
 
 // --- scoreboard
 await page.click('#tabs [data-tab="report"]');

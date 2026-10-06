@@ -91,6 +91,8 @@ check('territories load from the migration seed', await st(page, `Object.keys(S.
 
 // --- company, contact, activity, task, opportunity through the screens
 await page.click('.bar [data-act="co-new"]');
+await page.fill('#lk-q', 'Acme Excavating LLC');
+await page.click('#lk-add');
 await page.fill('#f-name', 'Acme Excavating LLC');
 await page.fill('#f-city', 'Christiansburg'); await page.fill('#f-state', 'va'); await page.fill('#f-zip', '24073'); await page.fill('#f-phone', '5405550177');
 await page.selectOption('#f-industry', 'Excavation'); await page.selectOption('#f-priority', 'A');
@@ -225,6 +227,16 @@ await page.waitForFunction(() => S.dr.size === 0);
 await st(page, `Store._chain`);
 const sent = await one(`select (select count(*)::int from email_drafts) drafts, (select count(*)::int from activities where activity_type = 'Email Sent') emails, (select lead_status from companies where name like 'Blue Ridge%') status`);
 check('mark sent: draft removed, email logged, status moved', sent.drafts === 0 && sent.emails === 1 && sent.status === 'Email Sent', sent);
+await page.click('.bar [data-act="co-new"]');
+await page.fill('#lk-q', 'Mary Whitfield');
+await page.click('#lk-add-alt');
+await page.waitForSelector('#f-first');
+await page.fill('#f-mobile', '276-555-0190'); await page.fill('#f-email', 'mary@whitfield.example'); await page.fill('#f-city', 'Galax'); await page.fill('#f-state', 'VA');
+await page.click('#dlg-submit');
+await page.waitForFunction(() => [...S.ct.values()].some(x => x.email === 'mary@whitfield.example'));
+await st(page, `Store._chain`);
+const person = await one(`select c.name, c.industry, c.lead_status, c.territory_code, c.main_phone, (select count(*)::int from contacts k where k.company_id = c.id and k.is_primary and k.first_name = 'Mary' and k.email = 'mary@whitfield.example') cts from companies c where c.name = 'Mary Whitfield'`);
+check('individual saved as a record plus its contact', person && person.industry === 'Individual / Family' && person.lead_status === 'New' && person.cts === 1 && !!person.territory_code, person);
 await page.click('#tabs [data-tab="report"]');
 await page.waitForSelector('#rp-total');
 const board = await one(`select (select count(*)::int from activities where activity_type in ('Phone Call', 'Voicemail', 'Email Sent', 'Text Message')) n`);
@@ -264,7 +276,7 @@ const after = JSON.parse(await st(page2, snap()));
 const norm = o => JSON.parse(JSON.stringify(o, (k, v) => (k === 'created' || k === 'updated' || k === 'at' || k === 'statusAt') && typeof v === 'string' ? v.slice(0, 19) : v));
 const diff = [];
 for (const k of ['co', 'ct', 'ac', 'dr']) { const a = norm(before[k]), b = norm(after[k]); if (a.length !== b.length) diff.push(k + ' count ' + a.length + ' vs ' + b.length); a.forEach((r, i) => { for (const f of new Set([...Object.keys(r), ...Object.keys(b[i] || {})])) { const x = r[f], y = (b[i] || {})[f]; const nz = v => (v == null || v === false || (Array.isArray(v) && !v.length)) ? '' : v; if (JSON.stringify(nz(x)) !== JSON.stringify(nz(y))) diff.push(k + '.' + f + ': ' + JSON.stringify(x) + ' vs ' + JSON.stringify(y)); } }); }
-check('reload returns the same records the screens were showing', diff.length === 0 && after.co.length === 4 && Object.keys(after.terr).length === 7 && after.out.main.gap === 5, diff.slice(0, 6));
+check('reload returns the same records the screens were showing', diff.length === 0 && after.co.length === 5 && Object.keys(after.terr).length === 7 && after.out.main.gap === 5, diff.slice(0, 6));
 await page2.screenshot({ path: path.join(OUT, 'web-dashboard.png'), fullPage: true });
 
 // --- live update from another person
@@ -278,7 +290,7 @@ await admin(`delete from companies where id = 'rlive1'`);
 // --- a rep who was added by email signs in; a stranger does not get in
 const pageB = await newPage(B);
 await pageB.waitForFunction(() => typeof S !== 'undefined' && S.ready, null, { timeout: 10000 });
-check('rep added by email is linked on first sign-in, not admin, sees the data', await st(pageB, `S.team[ME].name === 'Rep Bee' && CAP.isAdmin === false && S.co.size === 4`));
+check('rep added by email is linked on first sign-in, not admin, sees the data', await st(pageB, `S.team[ME].name === 'Rep Bee' && CAP.isAdmin === false && S.co.size === 5`));
 await st(pageB, `openRep(ME)`);
 await pageB.fill('#f-name', 'Rep Bee Promoted'); await pageB.check('#f-admin');
 await pageB.click('#dlg-submit');

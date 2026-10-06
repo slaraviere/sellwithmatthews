@@ -357,7 +357,7 @@ function openCompany(id, pre) {
   const vals = c ? Object.assign({}, c, { terrPick: c.terrHow === 'Manual' ? c.terr : '' }) : Object.assign({ status: 'New', rep: ME || '' }, pre || {});
   let confirmed = false;
   openDialog({
-    title: c ? 'Edit company' : 'New company', wide: true,
+    title: c ? (isPerson(c) ? 'Edit individual' : 'Edit company') : 'New company', wide: true,
     body: fieldsHtml(spec, vals) + datalist('dl-sub', distinct('co', 'subIndustry')) + datalist('dl-source', distinct('co', 'source')) + datalist('dl-type', distinct('co', 'leadType')),
     extra: c ? `<button type="button" class="btn danger" data-act="del" data-kind="co" data-id="${esc(c.id)}">Delete</button>` : '',
     onSubmit: () => guard(async () => {
@@ -415,8 +415,9 @@ function openContact(id, coId, pre) {
   }
   openDialog({
     title: c ? 'Edit contact' : 'New contact', wide: true,
+    sub: c && !c.co ? 'This contact isn\'t attached to a company or a page of their own, so calls and follow-ups can\'t be logged for them yet. Pick their company below, or give them their own page.' : '',
     body: fieldsHtml(spec, vals) + hist,
-    extra: c ? `<button type="button" class="btn danger" data-act="del" data-kind="ct" data-id="${esc(c.id)}">Delete</button>` + (c.co ? `<button type="button" class="btn" data-act="co-open" data-id="${esc(c.co)}">Open company</button>` : '') : '',
+    extra: c ? `<button type="button" class="btn danger" data-act="del" data-kind="ct" data-id="${esc(c.id)}">Delete</button>` + (c.co ? `<button type="button" class="btn" data-act="co-open" data-id="${esc(c.co)}">${isPerson(S.co.get(c.co)) ? 'Open their page' : 'Open company'}</button>` : `<button type="button" class="btn w" data-act="ct-person" data-id="${esc(c.id)}">Give them their own page</button>`) : '',
     onSubmit: () => guard(async () => {
       const v = readFields(spec);
       const pick = readCoPicker(coId);
@@ -776,7 +777,7 @@ SCREENS.companies = function () {
     const as = c.assets || [];
     const flags = (c.status === 'Do Not Contact' || c.dnc ? '<span class="flag">DNC</span>' : '') + (c.optOut ? '<span class="flag">No email</span>' : '') + (d.dupIds.has(c.id) ? '<span class="flag warn">Dup?</span>' : '');
     return `<tr data-act="co-open" data-id="${esc(c.id)}">
-      <td class="co"><button type="button" class="name" data-act="co-open" data-id="${esc(c.id)}">${esc(c.name)}</button>${coLines(c).filter(l => l !== 'Equipment').map(l => `<span class="st st-warn">${esc(l)}</span>`).join('')}${flags}<div class="muted">${esc([clean((c.city || '') + (c.state ? ', ' + c.state : '')), c.industry].filter(Boolean).join(' · '))}</div></td>
+      <td class="co"><button type="button" class="name" data-act="co-open" data-id="${esc(c.id)}">${esc(c.name)}</button>${personChip(c)}${coLines(c).filter(l => l !== 'Equipment').map(l => `<span class="st st-warn">${esc(l)}</span>`).join('')}${flags}<div class="muted">${esc([clean((c.city || '') + (c.state ? ', ' + c.state : '')), c.industry].filter(Boolean).join(' · '))}</div></td>
       <td>${terrTag(c.terr)}</td><td>${priChip(c.priority)}</td><td>${statusChip(c.status)}</td>
       <td class="assets">${as.length ? esc(as.slice(0, 2).join(', ')) + (as.length > 2 ? ` <span class="muted">+${as.length - 2}</span>` : '') : '<span class="muted">–</span>'}</td>
       <td>${esc(repName(c.rep)) || '<span class="muted">–</span>'}</td>
@@ -871,9 +872,9 @@ SCREENS.contacts = function () {
   rows.sort((a, b) => ctName(a).localeCompare(ctName(b)));
   const body = rows.slice(0, f.limit).map(x => `<tr data-act="ct-open" data-id="${esc(x.id)}">
     <td class="co"><button type="button" class="name" data-act="ct-open" data-id="${esc(x.id)}">${esc(ctName(x))}</button>${x.primary ? '<span class="st st-out">Primary</span>' : ''}${x.dnc ? '<span class="flag">DNC</span>' : ''}${x.optOut ? '<span class="flag">No email</span>' : ''}<div class="muted">${esc([x.title, x.role && x.role !== x.title ? x.role : ''].filter(Boolean).join(' · '))}</div></td>
-    <td>${x.co && S.co.has(x.co) ? `<button type="button" class="link" data-act="co-open" data-id="${esc(x.co)}">${esc(coName(x.co))}</button>` : '<span class="muted">No company</span>'}</td>
+    <td>${x.co && S.co.has(x.co) ? (isPerson(S.co.get(x.co)) ? `<button type="button" class="link" data-act="co-open" data-id="${esc(x.co)}">Individual</button>` : `<button type="button" class="link" data-act="co-open" data-id="${esc(x.co)}">${esc(coName(x.co))}</button>`) : '<span class="flag">Not attached</span>'}</td>
     <td><span class="sel">${esc(x.email || '')}</span></td><td><span class="sel">${esc(fmtPhone(x.phone))}</span></td><td><span class="sel">${esc(fmtPhone(x.mobile))}</span></td><td>${dueSpan(x.nextFU)}</td></tr>`).join('');
-  return `<div class="page-head"><div><h1>Contacts</h1><p class="sub">Every contact, across all companies</p></div><div class="row">${exportBtn('ct')}<button type="button" class="btn primary w" data-act="ct-new" data-id="">+ Contact</button></div></div>
+  return `<div class="page-head"><div><h1>Contacts</h1><p class="sub">Every person, whether at a company or on their own</p></div><div class="row">${exportBtn('ct')}<button type="button" class="btn primary w" data-act="ct-new" data-id="">+ Contact</button></div></div>
     <div class="filters"><input id="flt-ct-q" type="search" class="q" placeholder="Search name, company, email, phone" value="${esc(f.q)}" data-input="filter" data-scope="ct" data-key="q" aria-label="Search contacts">${fsel('ct', 'role', 'Role', ROLES)}</div>
     <p class="count">${rows.length.toLocaleString()} ${rows.length === 1 ? 'contact' : 'contacts'}</p>
     ${rows.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Contact</th><th>Company</th><th>Email</th><th>Phone</th><th>Mobile</th><th>Next follow-up</th></tr></thead><tbody>${body}</tbody></table></div>${rows.length > f.limit ? `<button type="button" class="btn more" data-act="more" data-scope="ct">Show 100 more</button>` : ''}`

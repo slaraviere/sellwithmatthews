@@ -79,7 +79,7 @@ function prospectData(c, ct, purpose) {
   const acts = (derive().actByCo.get(c.id) || []).slice(0, 5).map(a => ({ date: isoToYmd(a.at), type: a.type, outcome: a.outcome || undefined, notes: a.notes ? cap(a.notes, 220) : undefined }));
   return {
     id: c.id, purpose: purposeText(c, purpose), lines_of_business: coLines(c), is_referral_partner: isReferral(c) || undefined,
-    company: c.name, location: clean((c.city || '') + (c.state ? ', ' + c.state : '')) || undefined,
+    company: isPerson(c) ? undefined : c.name, is_individual: isPerson(c) || undefined, location: clean((c.city || '') + (c.state ? ', ' + c.state : '')) || undefined,
     industry: [c.industry, c.subIndustry].filter(Boolean).join(' / ') || undefined,
     equipment_they_may_have: (c.assets || []).length ? c.assets : undefined,
     lead_status: c.status || undefined, notes: c.notes ? cap(c.notes, 500) : undefined,
@@ -94,6 +94,7 @@ const DRAFT_RULES = `Rules for every email:
 - Give one specific reason this company might have equipment to sell, drawn from its industry or the equipment it may have. Never invent facts about the prospect, such as fleet size, machines they own, or past conversations that are not in the data.
 - Do not state commission rates, fees, valuations, sale prices, guarantees or auction dates unless they appear in the company facts or the rep instructions.
 - Make one clear, low-effort ask: a short call, or the name of the right person.
+- When is_individual is true, the prospect is a private person, not a business. Write to them personally, never mention a company of theirs, and talk about what they may have to sell instead of a fleet or an industry.
 - When the prospect is a referral partner, write to them as a professional peer about how you help their clients. Never write as if the reader has suffered a loss, and never mention a specific family or death.
 - Sound like a person who works in equipment, not like marketing copy. No "I hope this email finds you well", no "reaching out", no "touch base".
 - End the body with the signature exactly as given. If a footer line is given, put it last, after a blank line.
@@ -144,7 +145,7 @@ function aiErrText(e) {
 }
 const DB_CODES = ['quota_exceeded', 'invalid_argument', 'revoked', 'unavailable', 'resource_exhausted'];
 function draftRecord(c, ct, purpose, d, extra) {
-  return { id: uid(), co: c.id, ct: ct.id, to: ct.email, purpose, subject: d.subject || 'Equipment at ' + c.name, body: d.body, by: ME || '', extra: cap(clean(extra), 800), created: nowIso() };
+  return { id: uid(), co: c.id, ct: ct.id, to: ct.email, purpose, subject: d.subject || (isPerson(c) ? 'Selling with Matthews Auctioneers' : 'Equipment at ' + c.name), body: d.body, by: ME || '', extra: cap(clean(extra), 800), created: nowIso() };
 }
 
 /* ---------- batch ---------- */
