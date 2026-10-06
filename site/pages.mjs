@@ -15,6 +15,8 @@ export const PROGRAMS = [
     blurb: 'One machine or a whole fleet. Trucks, trailers and building materials too.',
     title: 'Sell your equipment at auction',
     lead: 'One machine or a whole fleet, we handle the sale from the first look to the final payment.',
+    /* Funnel page: no menu and no button to the main site at the top. Visitors arrive from a "sell your equipment" link, so the page has one job. */
+    funnel: true,
     leadOnly: true,  /* the offer is already in the strip at the top and on the form, so the opening line doesn't repeat it */
     /* Three facts in one row. They replace the bullet list and the separate "Where equipment sells" section. */
     facts: [
@@ -98,7 +100,7 @@ export const PROGRAMS = [
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /* ext is '' on the live site (clean addresses) and '.html' when the files are opened straight from disk. */
-function layout({ title, description, body, ext, config, current }) {
+function layout({ title, description, body, ext, config, current, funnel }) {
   const href = p => p.slug + ext;
   return `<!doctype html>
 <html lang="en">
@@ -115,7 +117,7 @@ function layout({ title, description, body, ext, config, current }) {
 if (/(access_token|refresh_token|error_description|type=(invite|recovery|signup|magiclink))/.test(location.hash)) location.replace('crm/' + location.hash);
 </script>
 </head>
-<body>
+<body${funnel ? ' class="funnel"' : ''}>
 
 <div class="reachbar">
   <div class="wrap">
@@ -125,7 +127,13 @@ if (/(access_token|refresh_token|error_description|type=(invite|recovery|signup|
   </div>
 </div>
 
-<header class="top">
+${funnel ? `<header class="top">
+  <div class="wrap">
+    <span class="top-logo"><img src="img/logo-wide.png" alt="Matthews Auctioneers. Consider it sold." width="242" height="74"></span>
+    <a class="top-call" href="tel:${PHONE.tel}">Call <b>${PHONE.text}</b></a>
+    <a class="btn red" href="#tell">Free consultation</a>
+  </div>
+</header>` : `<header class="top">
   <div class="wrap">
     <a class="top-logo" href="./"><img src="img/logo-wide.png" alt="Matthews Auctioneers. Consider it sold." width="242" height="74"></a>
     <nav class="top-nav" aria-label="Programs">
@@ -133,11 +141,11 @@ if (/(access_token|refresh_token|error_description|type=(invite|recovery|signup|
     </nav>
     <a class="btn" href="${MAIN_SITE}">Bid at MatthewsAuctioneers.com</a>
   </div>
-</header>
+</header>`}
 
 <main>
 ${body}
-  <section class="buy">
+${funnel ? '' : `  <section class="buy">
     <div class="wrap">
       <div>
         <h2 class="wide">Here to buy?</h2>
@@ -145,10 +153,28 @@ ${body}
       </div>
       <a class="btn solid" href="${MAIN_SITE}">Go to MatthewsAuctioneers.com</a>
     </div>
-  </section>
+  </section>`}
 </main>
 
-<footer class="foot">
+${funnel ? `<footer class="foot quiet">
+  <div class="wrap">
+    <img src="img/logo-stacked.png" alt="Matthews Auctioneers" width="150" height="129">
+    <div>
+      <h3>Talk to us</h3>
+      <ul>
+        <li><a href="tel:${PHONE.tel}">${PHONE.text}</a></li>
+        <li><a href="mailto:${EMAIL}">${EMAIL}</a></li>
+      </ul>
+    </div>
+    <div class="foot-end">
+      <ul>
+        <li>Here to buy? <a href="${MAIN_SITE}">Go to MatthewsAuctioneers.com</a></li>
+        <li>Selling something else? <a href="./">See everything we sell</a></li>
+        <li><a href="crm/">Team sign-in</a></li>
+      </ul>
+    </div>
+  </div>
+</footer>` : `<footer class="foot">
   <div class="wrap">
     <img src="img/logo-stacked.png" alt="Matthews Auctioneers" width="150" height="129">
     <div>
@@ -171,7 +197,7 @@ ${body}
       </ul>
     </div>
   </div>
-</footer>
+</footer>`}
 
 <div class="callbar">
   <a class="btn red" href="tel:${PHONE.tel}">Call ${PHONE.text}</a>
@@ -390,16 +416,16 @@ function programPage(p, o) {
   ${quotesBand(p)}
   ${faqBand(p, o)}
   ${ctaBand(p)}
-  <section class="band more">
+  ${p.funnel ? '' : `<section class="band more">
     <div class="wrap">
       <p class="ask" id="more">Have something else to sell?</p>
       <nav class="lots" aria-labelledby="more">
         ${others.map(x => `<a href="${x.slug + o.ext}"><span class="wide">${esc(x.lot)}</span><span>${esc(x.blurb)}</span></a>`).join('\n        ')}
       </nav>
     </div>
-  </section>
+  </section>`}
 `;
-  return layout(Object.assign({}, o, { title: p.title + ' | Matthews Auctioneers', description: p.lead + ' Free consultation, no fees, no commitment.', body, current: p.slug }));
+  return layout(Object.assign({}, o, { title: p.title + ' | Matthews Auctioneers', description: p.lead + ' Free consultation, no fees, no commitment.', body, current: p.slug, funnel: !!p.funnel }));
 }
 
 /* Returns { 'index.html': html, 'equipment.html': html, ... } */

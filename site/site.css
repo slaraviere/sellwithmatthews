@@ -47,6 +47,21 @@ a { color: inherit; }
 .btn.solid { background: var(--white); color: var(--ground); }
 .btn.solid:hover { background: var(--ground); color: var(--white); border-color: var(--ground); }
 
+/* ---- funnel pages: no menu; the header carries only the logo, the phone number and one button, and stays in view ---- */
+.top-call { text-decoration: none; white-space: nowrap; font-size: 16px; }
+.top-call b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; margin-left: 3px; }
+.top-call:hover { text-decoration: underline; }
+.funnel .top .btn { padding: 11px 20px; }
+.funnel #tell { scroll-margin-top: 110px; }
+@media (min-width: 761px) {
+  .funnel .top { position: sticky; top: 0; z-index: 20; background: var(--ground); }
+  .funnel .top .wrap { padding-block: 10px; }
+  .funnel .top-logo img { height: 62px; }
+  .funnel .reachbar-phone { display: none; }
+}
+.foot.quiet .foot-end li { padding-block: 4px; }
+.foot.quiet a { text-decoration: underline; text-underline-offset: 3px; }
+
 /* ---- hero: the headline, the four things people sell, and the form ---- */
 .hero .wrap { padding-block: clamp(32px, 5vw, 72px) clamp(40px, 6vw, 88px); container-type: inline-size; }
 /* The headline runs the full width on one line; on narrow screens it breaks after "Consider". */
@@ -140,7 +155,7 @@ a { color: inherit; }
 .facts ul { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .facts li { padding: clamp(22px, 3vw, 34px) clamp(18px, 2.6vw, 36px) clamp(22px, 3vw, 34px) 0; display: flex; flex-direction: column; gap: 8px; }
 .facts li + li { border-left: 1px solid var(--edge); padding-left: clamp(18px, 2.6vw, 36px); }
-.facts b { font-size: clamp(20px, 2.1vw, 28px); overflow-wrap: anywhere; }
+.facts b { font-size: clamp(19px, 1.75vw, 25px); overflow-wrap: anywhere; }
 .facts span { color: var(--steel); font-size: 17px; max-width: 26em; }
 
 /* ---- how it works: a real sequence, so it is numbered ---- */
@@ -244,6 +259,7 @@ a { color: inherit; }
   .foot-end { margin-left: 0; text-align: left; }
 }
 @media (max-width: 760px) {
+  .top-call, .funnel .top .btn { display: none; }
   .callbar { display: grid; grid-template-columns: 1.3fr 1fr; gap: 8px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--ground); border-top: 1px solid var(--rule); padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); }
   .callbar .btn { padding: 12px 8px; font-size: 16px; white-space: nowrap; }
   body { padding-bottom: 72px; }
