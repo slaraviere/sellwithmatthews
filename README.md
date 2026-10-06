@@ -17,6 +17,10 @@ Two things in one site for Matthews Auctioneers:
 Links from the main site can carry a tag so each lead records where it came from, for example
 `/equipment?src=main-site`.
 
+A program's page is only built for the live site when it is marked `published: true` in
+`site/pages.mjs`. With one program published, the site's front address forwards to that page.
+`SITE_ALL=1 node build.mjs` builds every program for a local preview.
+
 Wording for the public pages lives in `site/pages.mjs`. Real photos placed in
 `site/img/photos/` appear on the front page; with none, that band is left out.
 

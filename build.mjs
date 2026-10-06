@@ -2,7 +2,7 @@
 //   dist/matthews-consignment-crm.html  the CRM as a Claude-hosted page (published as a Claude artifact)
 //   public/crm/index.html               the CRM on the website (Vercel + Supabase), for the team
 //   public/*.html                       the public "Sell with Matthews" pages (see site/pages.mjs)
-import { readFileSync, writeFileSync, mkdirSync, cpSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, cpSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { buildSite } from './site/pages.mjs';
 
 const r = f => readFileSync(new URL('./src/' + f, import.meta.url), 'utf8');
@@ -62,6 +62,8 @@ const photos = existsSync(photoDir) ? readdirSync(photoDir).filter(f => /\.(jpe?
 // A photo named after a program (site/img/equipment.jpg, dealers.jpg, estates.jpg, real-estate.jpg) appears on that program's page.
 const heroPhotos = {};
 for (const slug of ['equipment', 'dealers', 'estates', 'real-estate']) for (const e of ['jpg', 'jpeg', 'png', 'webp']) if (!heroPhotos[slug] && existsSync(new URL('./site/img/' + slug + '.' + e, import.meta.url))) heroPhotos[slug] = 'img/' + slug + '.' + e;
-for (const [file, html] of Object.entries(buildSite({ config, photos, heroPhotos }))) out('./public/' + file, html);
+// Only programs marked published in site/pages.mjs are built. SITE_ALL=1 builds every program, for previews.
+for (const f of existsSync(new URL('./public/', import.meta.url)) ? readdirSync(new URL('./public/', import.meta.url)) : []) if (f.endsWith('.html')) rmSync(new URL('./public/' + f, import.meta.url));
+for (const [file, html] of Object.entries(buildSite({ config, photos, heroPhotos, all: !!env.SITE_ALL }))) out('./public/' + file, html);
 for (const f of ['site.css', 'site.js']) cpSync(new URL('./site/' + f, import.meta.url), new URL('./public/' + f, import.meta.url));
 for (const d of ['fonts', 'img']) cpSync(new URL('./site/' + d + '/', import.meta.url), new URL('./public/' + d + '/', import.meta.url), { recursive: true });

@@ -9,8 +9,11 @@ export const EMAIL = 'stephen@matthewsauctioneers.com';
 export const MAIN_SITE = 'https://www.matthewsauctioneers.com/';
 const OFFER = 'Start with a free consultation: no fees, no commitment.';
 
+/* A program's page goes on the live site only when it is marked published. The others stay out of the
+   build entirely (no page, no links to them) until Matthews has approved them. */
 export const PROGRAMS = [
   {
+    published: true,
     slug: 'equipment', nav: 'Equipment', lot: 'Equipment', pick: 'Equipment',
     blurb: 'One machine or a whole fleet. Trucks, trailers and building materials too.',
     title: 'Sell your equipment at auction',
@@ -97,6 +100,10 @@ export const PROGRAMS = [
   },
 ];
 
+/* The programs this build includes: the published ones, or all of them for previews and tests. */
+let LIVE = PROGRAMS;
+const isLive = slug => LIVE.some(p => p.slug === slug);
+
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 /* ext is '' on the live site (clean addresses) and '.html' when the files are opened straight from disk. */
@@ -109,6 +116,9 @@ function layout({ title, description, body, ext, config, current, funnel }) {
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(description)}">
+<meta property="og:type" content="website">
+<meta property="og:title" content="${esc(title)}">
+<meta property="og:description" content="${esc(description)}">
 <link rel="icon" type="image/png" href="img/favicon.png">
 <link rel="preload" href="fonts/archivo-wdth.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="site.css">
@@ -137,7 +147,7 @@ ${funnel ? `<header class="top">
   <div class="wrap">
     <a class="top-logo" href="./"><img src="img/logo-wide.png" alt="Matthews Auctioneers. Consider it sold." width="242" height="74"></a>
     <nav class="top-nav" aria-label="Programs">
-      ${PROGRAMS.map(p => `<a href="${href(p)}"${current === p.slug ? ' aria-current="page"' : ''}>${esc(p.nav)}</a>`).join('\n      ')}
+      ${LIVE.map(p => `<a href="${href(p)}"${current === p.slug ? ' aria-current="page"' : ''}>${esc(p.nav)}</a>`).join('\n      ')}
     </nav>
     <a class="btn" href="${MAIN_SITE}">Bid at MatthewsAuctioneers.com</a>
   </div>
@@ -169,7 +179,7 @@ ${funnel ? `<footer class="foot quiet">
     <div class="foot-end">
       <ul>
         <li>Here to buy? <a href="${MAIN_SITE}">Go to MatthewsAuctioneers.com</a></li>
-        <li>Selling something else? <a href="./">See everything we sell</a></li>
+        ${LIVE.length > 1 ? `<li>Selling something else? <a href="./">See everything we sell</a></li>` : ''}
         <li><a href="crm/">Team sign-in</a></li>
       </ul>
     </div>
@@ -180,7 +190,7 @@ ${funnel ? `<footer class="foot quiet">
     <div>
       <h3>Sell with us</h3>
       <ul>
-        ${PROGRAMS.map(p => `<li><a href="${href(p)}">${esc(p.nav)}</a></li>`).join('\n        ')}
+        ${LIVE.map(p => `<li><a href="${href(p)}">${esc(p.nav)}</a></li>`).join('\n        ')}
       </ul>
     </div>
     <div>
@@ -220,7 +230,7 @@ const reachMe = `<div class="reach-me">
 
 /* The form is the same everywhere; a program page preselects what the person has. */
 function form(program) {
-  const picks = PROGRAMS.map(p => p.pick).concat('Something else');
+  const picks = LIVE.map(p => p.pick).concat('Something else');
   const p = program || {};
   const what = p.chips
     ? `<fieldset class="chips"><legend>What do you have? <small>tap any that apply</small></legend>
@@ -315,7 +325,7 @@ function faqBand(p, o) {
     <div class="wrap">
       <h2 class="wide minor">Questions sellers ask</h2>
       <div class="faq-list">
-        ${p.faq.map(([q, a, link]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}${link ? ` <a href="${link[0] + o.ext}">${esc(link[1])}</a>.` : ''}</p></details>`).join('\n        ')}
+        ${p.faq.filter(f => !f[2] || isLive(f[2][0])).map(([q, a, link]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}${link ? ` <a href="${link[0] + o.ext}">${esc(link[1])}</a>.` : ''}</p></details>`).join('\n        ')}
       </div>
     </div>
   </section>`;
@@ -373,7 +383,7 @@ function frontPage(o) {
         ${reachMe}
         <p class="ask" id="ask">What do you have to sell?</p>
         <nav class="lots" aria-labelledby="ask">
-          ${PROGRAMS.map(p => `<a href="${p.slug + o.ext}"><span class="wide">${esc(p.lot)}</span><span>${esc(p.blurb)}</span></a>`).join('\n          ')}
+          ${LIVE.map(p => `<a href="${p.slug + o.ext}"><span class="wide">${esc(p.lot)}</span><span>${esc(p.blurb)}</span></a>`).join('\n          ')}
         </nav>
       </div>
       ${form(null)}
@@ -388,7 +398,7 @@ function frontPage(o) {
 }
 
 function programPage(p, o) {
-  const others = PROGRAMS.filter(x => x.slug !== p.slug);
+  const others = LIVE.filter(x => x.slug !== p.slug);
   const body = `  <section class="hero prog">
     <div class="wrap">
       <h1 class="wide">${esc(p.title)}</h1>
@@ -416,7 +426,7 @@ function programPage(p, o) {
   ${quotesBand(p)}
   ${faqBand(p, o)}
   ${ctaBand(p)}
-  ${p.funnel ? '' : `<section class="band more">
+  ${p.funnel || !others.length ? '' : `<section class="band more">
     <div class="wrap">
       <p class="ask" id="more">Have something else to sell?</p>
       <nav class="lots" aria-labelledby="more">
@@ -428,11 +438,35 @@ function programPage(p, o) {
   return layout(Object.assign({}, o, { title: p.title + ' | Matthews Auctioneers', description: p.lead + ' Free consultation, no fees, no commitment.', body, current: p.slug, funnel: !!p.funnel }));
 }
 
-/* Returns { 'index.html': html, 'equipment.html': html, ... } */
-/* samples: show the empty "recently sold" layout with placeholders, for previews only. Never set it for the live build. */
-export function buildSite({ config = { url: '', key: '' }, ext = '', photos = [], heroPhotos = {}, samples = false } = {}) {
+/* With a single live program there is nothing to choose between, so the site's front address forwards to it.
+   Team sign-in links that land here are still handed to the CRM first. A tag such as ?src=main-site is kept. */
+function forwardPage(p, o) {
+  const to = p.slug + o.ext;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<title>${esc(p.title)} | Matthews Auctioneers</title>
+<script>
+if (/(access_token|refresh_token|error_description|type=(invite|recovery|signup|magiclink))/.test(location.hash)) location.replace('crm/' + location.hash);
+else location.replace(${JSON.stringify(to)} + location.search);
+</script>
+<noscript><meta http-equiv="refresh" content="0; url=${esc(to)}"></noscript>
+</head>
+<body><p><a href="${esc(to)}">${esc(p.title)}</a></p></body>
+</html>
+`;
+}
+
+/* Returns { 'index.html': html, 'equipment.html': html, ... }
+   all: include every program, published or not (previews and tests only; the live build leaves it off).
+   samples: show the empty "recently sold" layout with placeholders, for previews only. */
+export function buildSite({ config = { url: '', key: '' }, ext = '', photos = [], heroPhotos = {}, samples = false, all = false } = {}) {
   const o = { config, ext, photos, heroPhotos, samples };
-  const out = { 'index.html': frontPage(o) };
-  for (const p of PROGRAMS) out[p.slug + '.html'] = programPage(p, o);
+  LIVE = PROGRAMS.filter(p => all || p.published);
+  const out = { 'index.html': LIVE.length === 1 ? forwardPage(LIVE[0], o) : frontPage(o) };
+  for (const p of LIVE) out[p.slug + '.html'] = programPage(p, o);
+  LIVE = PROGRAMS;
   return out;
 }

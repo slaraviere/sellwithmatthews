@@ -1,6 +1,6 @@
 // End-to-end test of the website build (public/crm/index.html) against the real database
 // schema running in an in-memory Postgres, with row-level security enforced.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { launch } from './browser.mjs';
@@ -352,9 +352,19 @@ check('visitor cannot change or delete leads', !!(await anonSql(`update web_lead
 check('a lead needs a way to reach the person', !!(await anonSql(`insert into web_leads (name) values ('No Contact')`)).error);
 check('a stranger with an account cannot read leads', ((await runAs(C)(`select count(*)::int n from web_leads`)).rows || [{ n: -1 }])[0].n === 0);
 
-const PUB = path.join(ROOT, 'public');
+// The public pages are tested with every program included; what the live build leaves out is checked separately below.
+const { buildSite } = await import('../site/pages.mjs');
+const { cpSync } = await import('node:fs');
+const PUB = path.join(OUT, 'site');
+mkdirSync(PUB, { recursive: true });
+for (const [file, page] of Object.entries(buildSite({ all: true }))) writeFileSync(path.join(PUB, file), page);
+for (const f of ['site.css', 'site.js', 'fonts', 'img']) cpSync(path.join(ROOT, 'site', f), path.join(PUB, f), { recursive: true });
+const liveSite = buildSite();
+check('live build: only published programs get a page', JSON.stringify(Object.keys(liveSite).sort()) === JSON.stringify(['equipment.html', 'index.html']));
+check('live build: nothing on the equipment page points at an unpublished page', !/href="(dealers|estates|real-estate|\.\/)"/.test(liveSite['equipment.html']) && liveSite['equipment.html'].includes('href="crm/"') && liveSite['equipment.html'].includes('https://www.matthewsauctioneers.com/'));
+check('live build: the front address forwards to the equipment page and still hands sign-in links to the CRM', liveSite['index.html'].includes("location.replace('crm/' + location.hash)") && liveSite['index.html'].includes('location.replace("equipment" + location.search)') && !liveSite['index.html'].includes('dealers'));
+check('live build matches what is in public/', readFileSync(path.join(ROOT, 'public', 'equipment.html'), 'utf8').replace(/window\.__SITE__ = \{[^;]*\};/, '') === liveSite['equipment.html'].replace(/window\.__SITE__ = \{[^;]*\};/, '') && !existsSync(path.join(ROOT, 'public', 'dealers.html')));
 const TYPES = { html: 'text/html', css: 'text/css', js: 'text/javascript', png: 'image/png', jpg: 'image/jpeg', woff2: 'font/woff2' };
-const { existsSync } = await import('node:fs');
 async function sitePage(viewport) {
   const ctx = await browser.newContext({ viewport: viewport || { width: 1280, height: 900 } });
   const p = await ctx.newPage();
