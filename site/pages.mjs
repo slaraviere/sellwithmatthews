@@ -117,13 +117,20 @@ if (/(access_token|refresh_token|error_description|type=(invite|recovery|signup|
 </head>
 <body>
 
+<div class="reachbar">
+  <div class="wrap">
+    <span class="reachbar-offer">Free consultation. No fees, no commitment.</span>
+    <a class="reachbar-phone" href="tel:${PHONE.tel}">Call <b>${PHONE.text}</b></a>
+    <a class="reachbar-mail" href="mailto:${EMAIL}">${EMAIL}</a>
+  </div>
+</div>
+
 <header class="top">
   <div class="wrap">
     <a class="top-logo" href="./"><img src="img/logo-wide.png" alt="Matthews Auctioneers. Consider it sold." width="242" height="74"></a>
     <nav class="top-nav" aria-label="Programs">
       ${PROGRAMS.map(p => `<a href="${href(p)}"${current === p.slug ? ' aria-current="page"' : ''}>${esc(p.nav)}</a>`).join('\n      ')}
     </nav>
-    <a class="top-phone" href="tel:${PHONE.tel}">${PHONE.text}</a>
     <a class="btn" href="${MAIN_SITE}">Bid at MatthewsAuctioneers.com</a>
   </div>
 </header>
@@ -177,6 +184,13 @@ ${body}
 </html>
 `;
 }
+
+/* Phone and email, large, near the top of every page. */
+const reachMe = `<div class="reach-me">
+          <span>Talk to us directly</span>
+          <a class="reach-phone wide" href="tel:${PHONE.tel}">${PHONE.text}</a>
+          <a class="reach-mail" href="mailto:${EMAIL}">${EMAIL}</a>
+        </div>`;
 
 /* The form is the same everywhere; a program page preselects what the person has. */
 function form(program) {
@@ -303,6 +317,7 @@ function frontPage(o) {
       <div class="hero-cols">
       <div>
         <p class="hero-sub">We sell equipment, dealer trade-ins, estates and real estate at auction. ${OFFER}</p>
+        ${reachMe}
         <p class="ask" id="ask">What do you have to sell?</p>
         <nav class="lots" aria-labelledby="ask">
           ${PROGRAMS.map(p => `<a href="${p.slug + o.ext}"><span class="wide">${esc(p.lot)}</span><span>${esc(p.blurb)}</span></a>`).join('\n          ')}
@@ -327,6 +342,7 @@ function programPage(p, o) {
       <div class="hero-cols">
       <div>
         <p class="hero-sub">${esc(p.lead)} ${OFFER}</p>
+        ${reachMe}
         <ul class="points">
           ${p.points.map(t => `<li>${esc(t)}</li>`).join('\n          ')}
         </ul>
