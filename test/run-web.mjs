@@ -353,7 +353,7 @@ check('a lead needs a way to reach the person', !!(await anonSql(`insert into we
 check('a stranger with an account cannot read leads', ((await runAs(C)(`select count(*)::int n from web_leads`)).rows || [{ n: -1 }])[0].n === 0);
 
 const PUB = path.join(ROOT, 'public');
-const TYPES = { html: 'text/html', css: 'text/css', js: 'text/javascript', png: 'image/png', woff2: 'font/woff2' };
+const TYPES = { html: 'text/html', css: 'text/css', js: 'text/javascript', png: 'image/png', jpg: 'image/jpeg', woff2: 'font/woff2' };
 const { existsSync } = await import('node:fs');
 async function sitePage(viewport) {
   const ctx = await browser.newContext({ viewport: viewport || { width: 1280, height: 900 } });
@@ -418,7 +418,8 @@ const chip = site.__posts[site.__posts.length - 1].row;
 check('equipment page: tapped choices, ZIP and details are sent together', chip.program === 'Equipment' && chip.zip === '24333' && chip.details === 'Has: Excavator, Trailer.\n2015 model, 4,200 hours' && chip.page === '/equipment' && await site.locator('.tell select').count() === 0, chip);
 check('equipment page: a visitor may fill in the ZIP column', !(await anonSql(`insert into web_leads (name, phone, zip, details) values ('Zip Probe', '2765550146', '24333', 'Has: Dozer.')`)).error);
 await admin(`delete from web_leads where name = 'Zip Probe'`);
-check('equipment page: questions, who it is for and a closing call to action', await site.locator('.faq details').count() >= 3 && await site.locator('.fit-list li').count() === 4 && await site.locator('.cta a[href="#tell"]').count() === 1 && await site.locator('.sold').count() === 0);
+check('equipment page: questions, who it is for and a closing call to action', await site.locator('.faq details').count() >= 3 && await site.locator('.fit-list li').count() === 4 && await site.locator('.cta a[href="#tell"]').count() === 1);
+check('equipment page: sold items are real ones, with no sample placeholders', await site.locator('.sold-list li').count() === 4 && await site.locator('.sold-list img').count() === 4 && !(await site.textContent('.sold')).includes('Sample') && (await site.textContent('.sold')).includes('$45,000') && await site.evaluate(() => [...document.querySelectorAll('.sold-list img')].every(i => i.complete ? i.naturalWidth > 0 : true)));
 site.__fail = false;
 await site.goto('https://site.test/estates');
 check('where they came from is kept across pages', await site.evaluate(() => sessionStorage.getItem('swm-src')) === 'main-site');

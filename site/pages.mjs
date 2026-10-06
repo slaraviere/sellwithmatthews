@@ -35,9 +35,14 @@ export const PROGRAMS = [
       ],
     },
     /* Recently sold items and seller quotes go here when Matthews sends them. Empty lists show nothing.
-       sold: [{ item: '2015 Cat 320 excavator', price: '$00,000', buyer: 'Ohio', img: 'img/sold/cat-320.jpg' }]
+       sold: { item, price, buyer (state, optional), img }
        quotes: [{ text: '...', who: 'Name, company, town' }] */
-    sold: [],
+    sold: [
+      { item: 'Kubota SVL75-2 track loader', price: '$45,000', buyer: 'North Carolina', img: 'img/sold/kubota-svl75-2.jpg' },
+      { item: 'John Deere 300G excavator', price: '$31,000', img: 'img/sold/deere-300g.jpg' },
+      { item: 'JLG E450AJ boom lift', price: '$17,800', img: 'img/sold/jlg-e450aj.jpg' },
+      { item: 'Better Built gooseneck trailer', price: '$7,000', img: 'img/sold/better-built-gooseneck.jpg' },
+    ],
     quotes: [],
     faq: [
       ['What does the consultation cost?', 'Nothing. There are no fees and no commitment. We look at what you have and tell you how we would sell it.'],
@@ -213,7 +218,7 @@ function soldBand(p, o) {
       <h2 class="wide">Recently sold</h2>
       <ul class="sold-list">
         ${list.slice(0, 8).map(x => `<li>${x.img ? `<img src="${esc(x.img)}" alt="${esc(x.item)}" loading="lazy">` : `<div class="sold-ph">${x.sample ? 'Your photo' : ''}</div>`}
-          <div class="sold-t"><b>${esc(x.item)}</b><span class="sold-p">${esc(x.price)}</span><span>Sold to a buyer in ${esc(x.buyer)}</span>${x.sample ? '<i>Sample layout</i>' : ''}</div></li>`).join('\n        ')}
+          <div class="sold-t"><b>${esc(x.item)}</b><span class="sold-p">${esc(x.price)}</span>${x.buyer ? `<span>Sold to a buyer in ${esc(x.buyer)}</span>` : ''}${x.sample ? '<i>Sample layout</i>' : ''}</div></li>`).join('\n        ')}
       </ul>
     </div>
   </section>`;
