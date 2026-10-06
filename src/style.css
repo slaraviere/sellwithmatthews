@@ -410,3 +410,8 @@ input[type=time] { background: var(--surface); border: 1px solid var(--line); bo
 .gate-card { background: #0a0b0d; border-color: #343941; border-top-color: var(--brand-red); color: #f4f5f7; color-scheme: dark; }
 .gate-card { --surface: #16191e; --surface-2: #20242b; --line: #343941; --line-2: #242931; --ink: #f4f5f7; --ink-2: #b3bbc7; --ink-3: #8a94a3; --link: #6bb6f0; --crit-soft: #461a19; --crit-ink: #ffb1ad; --good-soft: #143523; --good-ink: #8fdbac; }
 .gate-logo { width: 220px; height: auto; align-self: center; margin: 4px 0 6px; }
+
+/* ---- web leads ---- */
+.panel.leads { border-left: 4px solid var(--brand-red); }
+.lead-msg { display: block; color: var(--ink-2); font-size: 14px; margin-top: 2px; overflow-wrap: anywhere; }
+.lead-kv a { color: var(--link); font-weight: 600; }

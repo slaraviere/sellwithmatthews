@@ -141,6 +141,8 @@ function renderChrome() {
     badge.textContent = n ? String(n) : '';
     badge.hidden = !n;
   }
+  const lb = $('#lead-badge');
+  if (lb) { const n = S.ready ? newLeads().length : 0; lb.textContent = n ? String(n) : ''; lb.hidden = !n; lb.title = n ? 'New from the website' : ''; }
   const ob = $('#out-badge');
   if (ob) { let n = 0; if (S.ready) for (const d of S.dr.values()) if (d.by === ME || !d.by) n++; ob.textContent = n ? String(n) : ''; ob.hidden = !n; }
   const chip = $('#me-chip');
@@ -750,7 +752,7 @@ SCREENS.dashboard = function () {
   const stageRows = ALL_STAGES.filter(s => byStage.get(s)).map(s => ({ label: s, n: byStage.get(s) }));
   const fuHtml = `<section class="panel"><h3>Follow-ups due now</h3>${fuList.length ? `<ul class="rows">${fuList.slice(0, 8).map(c => { const p = primaryContact(c.id); const ph = (p && (p.mobile || p.phone)) || c.phone; return `<li><div class="rows-main"><button type="button" class="name" data-act="co-open" data-id="${esc(c.id)}">${esc(c.name)}</button><span class="muted">${esc([p ? ctName(p) : '', ph ? fmtPhone(ph) : ''].filter(Boolean).join(' · '))}</span></div><div class="rows-meta">${priChip(c.priority)}${dueSpan(c.nextFU)}<button type="button" class="btn sm w" data-act="log" data-id="${esc(c.id)}" data-type="Phone Call">Log call</button></div></li>`; }).join('')}</ul>${fuList.length > 8 ? `<button type="button" class="link" data-act="go-view" data-view="followup">See all ${fuList.length}</button>` : ''}` : `<p class="muted">${empty ? 'Companies with a follow-up date of today or earlier will be listed here.' : 'Nothing is due. Follow-ups appear here on their date.'}</p>`}</section>`;
   const tkHtml = `<section class="panel"><h3>Tasks due now</h3>${tkList.length ? `<ul class="rows">${tkList.slice(0, 8).map(taskRow).join('')}</ul>${tkList.length > 8 ? `<button type="button" class="link" data-act="go-tasks" data-tk="open">See all ${tkList.length}</button>` : ''}` : `<p class="muted">${empty ? 'Open tasks due today or earlier will be listed here.' : 'No tasks are due.'}</p>`}</section>`;
-  return head + start + tiles + `<div class="two">${fuHtml}${tkHtml}</div><div class="two">${barList('Open opportunities by territory', terrRows, 'Open opportunities will be counted here by territory.')}${barList('Opportunities by stage', stageRows, 'Opportunities will be counted here by stage.')}</div>${barList('In the open pipeline, by type', pipelineByType(pipeOpps).slice(0, 12), 'Counts of what is in open opportunities: excavators, skid steers, building materials and so on.')}`;
+  return head + leadsPanel() + start + tiles + `<div class="two">${fuHtml}${tkHtml}</div><div class="two">${barList('Open opportunities by territory', terrRows, 'Open opportunities will be counted here by territory.')}${barList('Opportunities by stage', stageRows, 'Opportunities will be counted here by stage.')}</div>${barList('In the open pipeline, by type', pipelineByType(pipeOpps).slice(0, 12), 'Counts of what is in open opportunities: excavators, skid steers, building materials and so on.')}`;
 };
 function taskRow(k) {
   const done = k.status === 'Completed' || k.status === 'Cancelled';

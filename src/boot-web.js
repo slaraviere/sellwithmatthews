@@ -45,11 +45,11 @@ async function webAuthSubmit() {
       const { error } = await SB.auth.signInWithPassword({ email, password: pass });
       if (error) WEB.err = authErrText(error);
     } else if (WEB.mode === 'signup') {
-      const { data, error } = await SB.auth.signUp({ email, password: pass, options: { emailRedirectTo: location.origin } });
+      const { data, error } = await SB.auth.signUp({ email, password: pass, options: { emailRedirectTo: location.origin + location.pathname } });
       if (error) WEB.err = authErrText(error);
       else if (!data || !data.session) { WEB.mode = 'signin'; WEB.msg = 'Check your email for a confirmation link, then sign in here.'; }
     } else {
-      const { error } = await SB.auth.resetPasswordForEmail(email, { redirectTo: location.origin });
+      const { error } = await SB.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
       if (error) WEB.err = authErrText(error);
       else { WEB.mode = 'signin'; WEB.msg = 'If that email has an account, a reset link is on its way.'; }
     }
@@ -132,6 +132,7 @@ async function webEnter(session) {
     Store.onChange = local => schedule(0, !!local);
     Store.onBehind = () => toast('Saved, but some newer details (appointment times, opportunity items, lines of business) can\'t be stored until the database gets its update. Ask your CRM admin to run the latest database update.', { error: true });
     await Store.init(SB);
+    await leadsInit(SB);
     CAP.db = SB;
     document.body.classList.remove('anon');
     document.body.classList.toggle('not-admin', !CAP.isAdmin);

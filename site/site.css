@@ -30,7 +30,7 @@ a { color: inherit; }
 .top-logo img { height: 74px; width: auto; }
 .top-nav { display: flex; gap: 24px; font-size: 15px; font-weight: 500; }
 .top-nav a { text-decoration: none; padding-block: 6px; border-bottom: 2px solid transparent; }
-.top-nav a:hover { border-bottom-color: var(--red); }
+.top-nav a:hover, .top-nav a[aria-current] { border-bottom-color: var(--red); }
 .top-phone { font-weight: 700; font-size: 18px; text-decoration: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .top-phone:hover { text-decoration: underline; }
 .btn { display: inline-block; font: inherit; font-weight: 700; text-decoration: none; text-align: center; border: 2px solid var(--white); color: var(--white); background: transparent; padding: 10px 18px; border-radius: 3px; cursor: pointer; }
@@ -56,6 +56,18 @@ a { color: inherit; }
 .lots a:hover span + span, .lots a:focus-visible span + span { color: var(--white); }
 @media (prefers-reduced-motion: reduce) { .lots a { transition: none; } }
 
+/* ---- program pages: a longer headline, the facts, and what sells ---- */
+.hero.prog h1 { font-size: clamp(34px, 9.6cqw, 60px); white-space: normal; max-width: 18ch; line-height: .96; }
+@media (min-width: 901px) { .hero.prog h1 { font-size: clamp(48px, 5.6cqw, 78px); white-space: normal; } }
+.points { margin-top: clamp(22px, 3vw, 36px); border-top: 1px solid var(--rule); }
+.points li { padding: 14px 0 14px 30px; border-bottom: 1px solid var(--rule); font-size: 19px; font-weight: 500; position: relative; }
+.points li::before { content: ""; position: absolute; left: 2px; top: 22px; width: 14px; height: 8px; border-left: 3px solid var(--red); border-bottom: 3px solid var(--red); transform: rotate(-45deg); transform-origin: left bottom; }
+.sells-h { font-size: 20px; font-weight: 700; margin-top: clamp(26px, 3.4vw, 44px); }
+.sells { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.sells li { border: 1px solid #4a5159; border-radius: 3px; padding: 6px 12px; font-size: 16px; }
+.more { border-top: 1px solid var(--rule); }
+.more .ask { margin-top: 0; }
+
 /* ---- the form: the one bright object on the page ---- */
 .tell { background: var(--white); color: var(--ink); border-top: 8px solid var(--red); border-radius: 0 0 4px 4px; padding: 26px 26px 24px; display: flex; flex-direction: column; gap: 14px; }
 .tell h2 { font-size: 27px; font-stretch: var(--wide); font-weight: 800; text-transform: uppercase; line-height: 1.02; }
@@ -68,14 +80,20 @@ a { color: inherit; }
 .tell .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tell .btn { font-size: 18px; padding: 14px 18px; width: 100%; font-stretch: var(--wide); text-transform: uppercase; letter-spacing: .01em; }
 .tell .btn:focus-visible { outline-color: var(--blue); }
+.tell-err { background: #fde2e1; color: #8f0806 !important; font-weight: 600; border-radius: 3px; padding: 9px 12px; }
+.tell .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.tell .btn[disabled] { opacity: .7; cursor: progress; }
+.tell.sent { min-height: 260px; justify-content: center; }
+.tell.sent h2 { outline: 0; }
 .tell-call { text-align: center; }
 .tell-call a { color: var(--ink); font-weight: 700; white-space: nowrap; }
 
-/* ---- photos ---- */
+/* ---- photos (real ones only; the band is left out until there are some) ---- */
 .shots { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 6px; }
-.shots figure { margin: 0; aspect-ratio: 4 / 3; background: #15181b; border: 2px dashed #4a5159; display: grid; place-items: center; text-align: center; padding: 16px; color: var(--steel); font-size: 15px; }
-.shots figure:first-child { aspect-ratio: auto; }
-.shots b { display: block; color: var(--white); font-size: 17px; }
+.shots.n1 { grid-template-columns: 1fr; } .shots.n2 { grid-template-columns: 1fr 1fr; }
+.shots figure { margin: 0; aspect-ratio: 4 / 3; overflow: hidden; background: #15181b; }
+.shots.n3 figure:first-child, .shots.n1 figure { aspect-ratio: auto; max-height: 520px; }
+.shots img { width: 100%; height: 100%; object-fit: cover; }
 
 /* ---- how it works: a real sequence, so it is numbered ---- */
 .band { padding-block: clamp(48px, 7vw, 96px); }
@@ -109,13 +127,21 @@ a { color: inherit; }
 .foot a:hover { color: var(--white); text-decoration: underline; }
 .foot-end { margin-left: auto; text-align: right; }
 
+/* ---- phones: calling is always one tap away ---- */
+.callbar { display: none; }
 @media (max-width: 1060px) { .top-nav { display: none; } }
 @media (max-width: 900px) {
   .hero-cols, .reach .wrap { grid-template-columns: minmax(0, 1fr); }
   .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .shots { grid-template-columns: 1fr 1fr; }
-  .shots figure:first-child { grid-column: 1 / -1; aspect-ratio: 16 / 9; }
+  .shots.n3 { grid-template-columns: 1fr 1fr; }
+  .shots.n3 figure:first-child { grid-column: 1 / -1; aspect-ratio: 16 / 9; }
   .foot-end { margin-left: 0; text-align: left; }
+}
+@media (max-width: 760px) {
+  .callbar { display: grid; grid-template-columns: 1.3fr 1fr; gap: 8px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; background: var(--black); border-top: 1px solid var(--rule); padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .callbar .btn { padding: 12px 8px; font-size: 16px; white-space: nowrap; }
+  body { padding-bottom: 72px; }
+  .top-phone { display: none; }
 }
 @media (max-width: 560px) {
   .top-logo img { height: 46px; }
