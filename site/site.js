@@ -38,9 +38,12 @@
     var btn = form.querySelector('button[type=submit]');
     /* Filled in by programs that fill every box, or sent faster than a person types: thank them and send nothing. */
     if (val('website') || Date.now() - opened < 1500) return done(name, phone);
+    /* Tapped choices ("Excavator", "Trailer") go in front of whatever they typed. */
+    var has = Array.prototype.slice.call(form.querySelectorAll('input[name=has]:checked')).map(function (c) { return c.value; });
+    var typed = String(form.elements.details.value || '').trim();
     var row = {
-      name: name.slice(0, 120), phone: phone.slice(0, 40), company: val('company').slice(0, 160), program: val('program').slice(0, 40),
-      details: String(form.elements.details.value || '').trim().slice(0, 2000), source: came, page: (location.pathname || '/').slice(0, 200)
+      name: name.slice(0, 120), phone: phone.slice(0, 40), company: val('company').slice(0, 160), zip: val('zip').slice(0, 20), program: val('program').slice(0, 40),
+      details: ((has.length ? 'Has: ' + has.join(', ') + '.' + (typed ? '\n' : '') : '') + typed).slice(0, 2000), source: came, page: (location.pathname || '/').slice(0, 200)
     };
     if (!cfg.url || !cfg.key) return fail("That didn't send. Please call " + (cfg.phone || 'us') + '.');
     btn.disabled = true; btn.textContent = 'Sending';

@@ -59,6 +59,9 @@ ${js(['core.js', 'store-web.js', 'ui.js', 'appointments.js', 'pipeline.js', 'rep
 // add a row and nothing else. Real photos dropped into site/img/photos/ appear on the front page.
 const photoDir = new URL('./site/img/photos/', import.meta.url);
 const photos = existsSync(photoDir) ? readdirSync(photoDir).filter(f => /\.(jpe?g|png|webp)$/i.test(f)).sort().map(f => ({ src: 'img/photos/' + f, alt: '' })) : [];
-for (const [file, html] of Object.entries(buildSite({ config, photos }))) out('./public/' + file, html);
+// A photo named after a program (site/img/equipment.jpg, dealers.jpg, estates.jpg, real-estate.jpg) appears on that program's page.
+const heroPhotos = {};
+for (const slug of ['equipment', 'dealers', 'estates', 'real-estate']) for (const e of ['jpg', 'jpeg', 'png', 'webp']) if (!heroPhotos[slug] && existsSync(new URL('./site/img/' + slug + '.' + e, import.meta.url))) heroPhotos[slug] = 'img/' + slug + '.' + e;
+for (const [file, html] of Object.entries(buildSite({ config, photos, heroPhotos }))) out('./public/' + file, html);
 for (const f of ['site.css', 'site.js']) cpSync(new URL('./site/' + f, import.meta.url), new URL('./public/' + f, import.meta.url));
 for (const d of ['fonts', 'img']) cpSync(new URL('./site/' + d + '/', import.meta.url), new URL('./public/' + d + '/', import.meta.url), { recursive: true });

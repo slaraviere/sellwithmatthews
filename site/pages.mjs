@@ -20,9 +20,32 @@ export const PROGRAMS = [
       'Listed on MatthewsAuctioneers.com, EquipmentFacts.com and AuctionTime.com.',
       'We take all types of units, from a single attachment to a full fleet.',  // DRAFT
     ],
-    sellsTitle: 'What we sell',
-    sells: ['Excavators', 'Skid steers', 'Dozers', 'Wheel loaders', 'Backhoes', 'Trucks', 'Trailers', 'Farm equipment', 'Forklifts', 'Attachments', 'Building materials'],
     reach: true,
+    /* Tap-to-pick list in the form: easier than typing on a phone. */
+    chips: ['Excavator', 'Skid steer', 'Dozer', 'Loader', 'Backhoe', 'Truck', 'Trailer', 'Farm equipment', 'Forklift', 'Attachments', 'Building materials', 'Something else'],
+    zip: true,
+    detailsHint: 'Year, make, model and hours, if you know them',
+    fit: {  // DRAFT
+      title: 'Who sells with us',
+      items: [
+        ['Contractors', 'Upgrading a machine, thinning the fleet or closing out a job.'],
+        ['Farms', 'Downsizing, changing direction or retiring.'],
+        ['Fleets', 'Turning over trucks, trailers and support equipment.'],
+        ['Businesses closing', 'The whole yard, shop and inventory in one sale.'],
+      ],
+    },
+    /* Recently sold items and seller quotes go here when Matthews sends them. Empty lists show nothing.
+       sold: [{ item: '2015 Cat 320 excavator', price: '$00,000', buyer: 'Ohio', img: 'img/sold/cat-320.jpg' }]
+       quotes: [{ text: '...', who: 'Name, company, town' }] */
+    sold: [],
+    quotes: [],
+    faq: [
+      ['What does the consultation cost?', 'Nothing. There are no fees and no commitment. We look at what you have and tell you how we would sell it.'],
+      ['Where will my equipment be advertised?', 'On MatthewsAuctioneers.com, EquipmentFacts.com and AuctionTime.com, in front of thousands of buyers from all 50 states and several countries.'],
+      ['I only have one machine. Is that enough?', 'Yes. We sell single machines and whole fleets.'],  // DRAFT
+      ['I\'m an equipment dealer. Is this the right page?', 'Dealers have their own program for trade-ins.', ['dealers', 'See the dealer trade-in program']],
+    ],
+    cta: true,
   },
   {
     slug: 'dealers', nav: 'Dealer trade-ins', lot: 'Dealer trade-ins', pick: 'Dealer trade-ins',
@@ -153,23 +176,87 @@ ${body}
 /* The form is the same everywhere; a program page preselects what the person has. */
 function form(program) {
   const picks = PROGRAMS.map(p => p.pick).concat('Something else');
+  const p = program || {};
+  const what = p.chips
+    ? `<fieldset class="chips"><legend>What do you have? <small>tap any that apply</small></legend>
+          ${p.chips.map((c, i) => `<label><input type="checkbox" name="has" value="${esc(c)}"><span>${esc(c)}</span></label>`).join('')}
+        </fieldset><input type="hidden" name="program" value="${esc(p.pick)}">`
+    : `<label>What do you have?
+          <select name="program">
+            ${picks.map(v => `<option${p.pick === v ? ' selected' : ''}>${esc(v)}</option>`).join('')}
+          </select>
+        </label>`;
   return `<form class="tell" id="tell" novalidate>
         <h2>Get a free consultation</h2>
         <p>No fees and no commitment. Tell us what you have and we'll call you.</p>
         <p class="tell-err" id="tell-err" role="alert" hidden></p>
         <label>Your name<input type="text" name="name" autocomplete="name" maxlength="120" required></label>
-        <label>Phone<input type="tel" name="phone" autocomplete="tel" inputmode="tel" maxlength="40" required></label>
-        ${program && program.company ? `<label><span>${esc(program.company)} <small>optional</small></span><input type="text" name="company" autocomplete="organization" maxlength="160"></label>` : ''}
-        <label>What do you have?
-          <select name="program">
-            ${picks.map(v => `<option${program && program.pick === v ? ' selected' : ''}>${esc(v)}</option>`).join('')}
-          </select>
-        </label>
-        <label><span>A few details <small>optional</small></span><textarea name="details" maxlength="2000" placeholder="For example: 2015 excavator, two dump trailers, located near Galax"></textarea></label>
+        ${p.zip ? `<div class="pair wide-left">
+          <label>Phone<input type="tel" name="phone" autocomplete="tel" inputmode="tel" maxlength="40" required></label>
+          <label>ZIP code<input type="text" name="zip" autocomplete="postal-code" inputmode="numeric" maxlength="10" placeholder="Where it sits"></label>
+        </div>` : `<label>Phone<input type="tel" name="phone" autocomplete="tel" inputmode="tel" maxlength="40" required></label>`}
+        ${p.company ? `<label><span>${esc(p.company)} <small>optional</small></span><input type="text" name="company" autocomplete="organization" maxlength="160"></label>` : ''}
+        ${what}
+        <label><span>A few details <small>optional</small></span><textarea name="details" maxlength="1800" placeholder="${esc(p.detailsHint || 'For example: 2015 excavator, two dump trailers, located near Galax')}"></textarea></label>
         <label class="hp" aria-hidden="true">Leave this empty<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
         <button class="btn red" type="submit">Request my free consultation</button>
         <p class="tell-call">Prefer to talk? Call <a href="tel:${PHONE.tel}">${PHONE.text}</a></p>
       </form>`;
+}
+
+/* Optional sections. Each returns nothing when the program has no content for it. */
+function soldBand(p, o) {
+  const list = (p.sold && p.sold.length) ? p.sold : (o.samples ? [1, 2, 3, 4].map(() => ({ sample: true, item: 'Item name', price: '$ Sale price', buyer: 'buyer\'s state' })) : []);
+  if (!list.length) return '';
+  return `<section class="band sold">
+    <div class="wrap">
+      <h2 class="wide">Recently sold</h2>
+      <ul class="sold-list">
+        ${list.slice(0, 8).map(x => `<li>${x.img ? `<img src="${esc(x.img)}" alt="${esc(x.item)}" loading="lazy">` : `<div class="sold-ph">${x.sample ? 'Your photo' : ''}</div>`}
+          <div class="sold-t"><b>${esc(x.item)}</b><span class="sold-p">${esc(x.price)}</span><span>Sold to a buyer in ${esc(x.buyer)}</span>${x.sample ? '<i>Sample layout</i>' : ''}</div></li>`).join('\n        ')}
+      </ul>
+    </div>
+  </section>`;
+}
+function quotesBand(p) {
+  if (!p.quotes || !p.quotes.length) return '';
+  return `<section class="band quotes">
+    <div class="wrap">
+      ${p.quotes.slice(0, 3).map(q => `<figure><blockquote>${esc(q.text)}</blockquote><figcaption>${esc(q.who)}</figcaption></figure>`).join('\n      ')}
+    </div>
+  </section>`;
+}
+function fitBand(p) {
+  if (!p.fit) return '';
+  return `<section class="band fit">
+    <div class="wrap">
+      <h2 class="wide">${esc(p.fit.title)}</h2>
+      <ul class="fit-list">
+        ${p.fit.items.map(([t, d]) => `<li><h3>${esc(t)}</h3><p>${esc(d)}</p></li>`).join('\n        ')}
+      </ul>
+    </div>
+  </section>`;
+}
+function faqBand(p, o) {
+  if (!p.faq || !p.faq.length) return '';
+  return `<section class="band faq">
+    <div class="wrap">
+      <h2 class="wide">Questions sellers ask</h2>
+      <div class="faq-list">
+        ${p.faq.map(([q, a, link]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}${link ? ` <a href="${link[0] + o.ext}">${esc(link[1])}</a>.` : ''}</p></details>`).join('\n        ')}
+      </div>
+    </div>
+  </section>`;
+}
+function ctaBand(p) {
+  if (!p.cta) return '';
+  return `<section class="cta">
+    <div class="wrap">
+      <h2 class="wide">Start with a free consultation</h2>
+      <p>No fees and no commitment.</p>
+      <div class="cta-row"><a class="btn solid" href="#tell">Tell us what you have</a><a class="btn" href="tel:${PHONE.tel}">Call ${PHONE.text}</a></div>
+    </div>
+  </section>`;
 }
 
 const steps = `<section class="band">
@@ -238,6 +325,7 @@ function programPage(p, o) {
         <ul class="points">
           ${p.points.map(t => `<li>${esc(t)}</li>`).join('\n          ')}
         </ul>
+        ${o.heroPhotos && o.heroPhotos[p.slug] ? `<img class="prog-photo" src="${esc(o.heroPhotos[p.slug])}" alt="" loading="lazy">` : ''}
         ${p.sells ? `<h2 class="sells-h">${esc(p.sellsTitle)}</h2>
         <ul class="sells">${p.sells.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
       </div>
@@ -245,8 +333,13 @@ function programPage(p, o) {
       </div>
     </div>
   </section>
+  ${soldBand(p, o)}
+  ${fitBand(p)}
   ${steps}
   ${p.reach ? reach : ''}
+  ${quotesBand(p)}
+  ${faqBand(p, o)}
+  ${ctaBand(p)}
   <section class="band more">
     <div class="wrap">
       <p class="ask" id="more">Have something else to sell?</p>
@@ -260,8 +353,9 @@ function programPage(p, o) {
 }
 
 /* Returns { 'index.html': html, 'equipment.html': html, ... } */
-export function buildSite({ config = { url: '', key: '' }, ext = '', photos = [] } = {}) {
-  const o = { config, ext, photos };
+/* samples: show the empty "recently sold" layout with placeholders, for previews only. Never set it for the live build. */
+export function buildSite({ config = { url: '', key: '' }, ext = '', photos = [], heroPhotos = {}, samples = false } = {}) {
+  const o = { config, ext, photos, heroPhotos, samples };
   const out = { 'index.html': frontPage(o) };
   for (const p of PROGRAMS) out[p.slug + '.html'] = programPage(p, o);
   return out;
