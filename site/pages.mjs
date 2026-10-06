@@ -15,12 +15,13 @@ export const PROGRAMS = [
     blurb: 'One machine or a whole fleet. Trucks, trailers and building materials too.',
     title: 'Sell your equipment at auction',
     lead: 'One machine or a whole fleet, we handle the sale from the first look to the final payment.',
-    points: [
-      'Sold online to thousands of buyers from all 50 states and several countries.',
-      'Listed on MatthewsAuctioneers.com, EquipmentFacts.com and AuctionTime.com.',
-      'We take all types of units, from a single attachment to a full fleet.',  // DRAFT
+    leadOnly: true,  /* the offer is already in the strip at the top and on the form, so the opening line doesn't repeat it */
+    /* Three facts in one row. They replace the bullet list and the separate "Where equipment sells" section. */
+    facts: [
+      ['All 50 states', 'Thousands of buyers, from every state and several countries.'],
+      ['3 marketplaces', 'Listed on MatthewsAuctioneers.com, EquipmentFacts.com and AuctionTime.com.'],
+      ['Any size sale', 'One attachment, one machine or a full fleet.'],  // DRAFT
     ],
-    reach: true,
     /* Tap-to-pick list in the form: easier than typing on a phone. */
     chips: ['Excavator', 'Skid steer', 'Dozer', 'Loader', 'Backhoe', 'Truck', 'Trailer', 'Farm equipment', 'Forklift', 'Attachments', 'Building materials', 'Something else'],
     zip: true,
@@ -35,10 +36,10 @@ export const PROGRAMS = [
       ],
     },
     /* Recently sold items and seller quotes go here when Matthews sends them. Empty lists show nothing.
-       sold: { item, price, img }
+       sold: { item, price, img, big } — the first one is the large photo at the top of the page (big is its larger file)
        quotes: [{ text: '...', who: 'Name, company, town' }] */
     sold: [
-      { item: 'Kubota SVL75-2 track loader', price: '$45,000', img: 'img/sold/kubota-svl75-2.jpg' },
+      { item: 'Kubota SVL75-2 track loader', price: '$45,000', img: 'img/sold/kubota-svl75-2.jpg', big: 'img/sold/kubota-svl75-2-large.jpg' },
       { item: 'John Deere 300G excavator', price: '$31,000', img: 'img/sold/deere-300g.jpg' },
       { item: 'JLG E450AJ boom lift', price: '$17,800', img: 'img/sold/jlg-e450aj.jpg' },
       { item: 'Better Built gooseneck trailer', price: '$7,000', img: 'img/sold/better-built-gooseneck.jpg' },
@@ -46,7 +47,6 @@ export const PROGRAMS = [
     quotes: [],
     faq: [
       ['What does the consultation cost?', 'Nothing. There are no fees and no commitment. We look at what you have and tell you how we would sell it.'],
-      ['Where will my equipment be advertised?', 'On MatthewsAuctioneers.com, EquipmentFacts.com and AuctionTime.com, in front of thousands of buyers from all 50 states and several countries.'],
       ['I only have one machine. Is that enough?', 'Yes. We sell single machines and whole fleets.'],  // DRAFT
       ['I\'m an equipment dealer. Is this the right page?', 'Dealers have their own program for trade-ins.', ['dealers', 'See the dealer trade-in program']],
     ],
@@ -218,21 +218,48 @@ function form(program) {
         ${what}
         <label><span>A few details <small>optional</small></span><textarea name="details" maxlength="1800" placeholder="${esc(p.detailsHint || 'For example: 2015 excavator, two dump trailers, located near Galax')}"></textarea></label>
         <label class="hp" aria-hidden="true">Leave this empty<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
-        <button class="btn red" type="submit">Request my free consultation</button>
+        <button class="btn red" type="submit">Get my free consultation</button>
         <p class="tell-call">Prefer to talk? Call <a href="tel:${PHONE.tel}">${PHONE.text}</a></p>
       </form>`;
 }
 
 /* Optional sections. Each returns nothing when the program has no content for it. */
+const soldOf = p => (p.sold || []).filter(x => x.item && x.price);
+/* A slim strip of recent sale prices, shown right under the headline. */
+function tape(p) {
+  const list = soldOf(p);
+  if (list.length < 2) return '';
+  return `<div class="tape"><span class="tape-h">Recently sold</span><ul>${list.slice(0, 4).map(x => `<li><span>${esc(x.item)}</span><b class="wide">${esc(x.price)}</b></li>`).join('')}</ul></div>`;
+}
+/* The large photo at the top: a photo file named after the program if there is one, otherwise the first sold item. */
+function heroPhoto(p, o) {
+  const own = o.heroPhotos && o.heroPhotos[p.slug], top = soldOf(p).find(x => x.img);
+  if (own) return `<figure class="hero-photo"><img src="${esc(own)}" alt="" width="1280" height="960"></figure>`;
+  if (!top) return '';
+  return `<figure class="hero-photo"><img src="${esc(top.big || top.img)}" alt="${esc(top.item)}" width="1280" height="960"><figcaption><span>${esc(top.item)}</span><b>Sold for ${esc(top.price)}</b></figcaption></figure>`;
+}
 function soldBand(p, o) {
-  const list = (p.sold && p.sold.length) ? p.sold : (o.samples ? [1, 2, 3, 4].map(() => ({ sample: true, item: 'Item name', price: '$ Sale price' })) : []);
+  const own = o.heroPhotos && o.heroPhotos[p.slug];
+  /* the first sold item is already the large photo at the top, so the cards start with the second */
+  const real = soldOf(p), rest = own ? real : real.slice(real.length && real[0].img ? 1 : 0);
+  const list = rest.length ? rest : (o.samples && !real.length ? [1, 2, 3, 4].map(() => ({ sample: true, item: 'Item name', price: '$ Sale price' })) : []);
   if (!list.length) return '';
   return `<section class="band sold">
     <div class="wrap">
       <h2 class="wide">Recently sold</h2>
-      <ul class="sold-list">
-        ${list.slice(0, 8).map(x => `<li>${x.img ? `<img src="${esc(x.img)}" alt="${esc(x.item)}" loading="lazy">` : `<div class="sold-ph">${x.sample ? 'Your photo' : ''}</div>`}
+      <ul class="sold-list n${Math.min(list.length, 4)}">
+        ${list.slice(0, 8).map(x => `<li>${x.img ? `<img src="${esc(x.img)}" alt="${esc(x.item)}" loading="lazy" width="880" height="660">` : `<div class="sold-ph">${x.sample ? 'Your photo' : ''}</div>`}
           <div class="sold-t"><b>${esc(x.item)}</b><span class="sold-p">${esc(x.price)}</span>${x.sample ? '<i>Sample layout</i>' : ''}</div></li>`).join('\n        ')}
+      </ul>
+    </div>
+  </section>`;
+}
+function factsBand(p) {
+  if (!p.facts || !p.facts.length) return '';
+  return `<section class="facts">
+    <div class="wrap">
+      <ul>
+        ${p.facts.map(([t, d]) => `<li><b class="wide">${esc(t)}</b><span>${esc(d)}</span></li>`).join('\n        ')}
       </ul>
     </div>
   </section>`;
@@ -249,7 +276,7 @@ function fitBand(p) {
   if (!p.fit) return '';
   return `<section class="band fit">
     <div class="wrap">
-      <h2 class="wide">${esc(p.fit.title)}</h2>
+      <h2 class="wide minor">${esc(p.fit.title)}</h2>
       <ul class="fit-list">
         ${p.fit.items.map(([t, d]) => `<li><h3>${esc(t)}</h3><p>${esc(d)}</p></li>`).join('\n        ')}
       </ul>
@@ -260,7 +287,7 @@ function faqBand(p, o) {
   if (!p.faq || !p.faq.length) return '';
   return `<section class="band faq">
     <div class="wrap">
-      <h2 class="wide">Questions sellers ask</h2>
+      <h2 class="wide minor">Questions sellers ask</h2>
       <div class="faq-list">
         ${p.faq.map(([q, a, link]) => `<details><summary>${esc(q)}</summary><p>${esc(a)}${link ? ` <a href="${link[0] + o.ext}">${esc(link[1])}</a>.` : ''}</p></details>`).join('\n        ')}
       </div>
@@ -315,7 +342,7 @@ function frontPage(o) {
     <div class="wrap">
       <h1 class="wide">Consider it sold.</h1>
       <div class="hero-cols">
-      <div>
+      <div class="hero-left">
         <p class="hero-sub">We sell equipment, dealer trade-ins, estates and real estate at auction. ${OFFER}</p>
         ${reachMe}
         <p class="ask" id="ask">What do you have to sell?</p>
@@ -340,20 +367,22 @@ function programPage(p, o) {
     <div class="wrap">
       <h1 class="wide">${esc(p.title)}</h1>
       <div class="hero-cols">
-      <div>
-        <p class="hero-sub">${esc(p.lead)} ${OFFER}</p>
+      ${tape(p)}
+      <div class="hero-left">
+        <p class="hero-sub">${esc(p.lead)}${p.leadOnly ? '' : ' ' + OFFER}</p>
         ${reachMe}
-        <ul class="points">
+        ${heroPhoto(p, o)}
+        ${p.points ? `<ul class="points">
           ${p.points.map(t => `<li>${esc(t)}</li>`).join('\n          ')}
-        </ul>
-        ${o.heroPhotos && o.heroPhotos[p.slug] ? `<img class="prog-photo" src="${esc(o.heroPhotos[p.slug])}" alt="" loading="lazy">` : ''}
-        ${p.sells ? `<h2 class="sells-h">${esc(p.sellsTitle)}</h2>
-        <ul class="sells">${p.sells.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
+        </ul>` : ''}
+        ${p.sells ? `<div class="sells-box"><h2 class="sells-h">${esc(p.sellsTitle)}</h2>
+        <ul class="sells">${p.sells.map(t => `<li>${esc(t)}</li>`).join('')}</ul></div>` : ''}
       </div>
       ${form(p)}
       </div>
     </div>
   </section>
+  ${factsBand(p)}
   ${soldBand(p, o)}
   ${fitBand(p)}
   ${steps}

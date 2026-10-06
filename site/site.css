@@ -51,7 +51,8 @@ a { color: inherit; }
 .hero .wrap { padding-block: clamp(32px, 5vw, 72px) clamp(40px, 6vw, 88px); container-type: inline-size; }
 /* The headline runs the full width on one line; on narrow screens it breaks after "Consider". */
 .hero h1 { font-size: clamp(36px, 14cqw, 96px); line-height: .9; }
-.hero-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr); gap: clamp(28px, 5vw, 72px); align-items: start; margin-top: clamp(22px, 3vw, 40px); }
+.hero-cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, .8fr); gap: clamp(22px, 2.6vw, 34px) clamp(28px, 5vw, 72px); align-items: start; margin-top: clamp(20px, 2.6vw, 34px); }
+.hero-left { min-width: 0; }
 @media (min-width: 901px) { .hero h1 { font-size: 7.85cqw; white-space: nowrap; } }
 .hero-sub { font-size: clamp(18px, 1.7vw, 22px); color: var(--steel); max-width: 34em; }
 .reach-me { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 26px; margin-top: 24px; }
@@ -69,13 +70,30 @@ a { color: inherit; }
 @media (prefers-reduced-motion: reduce) { .lots a { transition: none; } }
 
 /* ---- program pages: a longer headline, the facts, and what sells ---- */
-.hero.prog h1 { font-size: clamp(34px, 9.6cqw, 60px); white-space: normal; max-width: 18ch; line-height: .96; }
-@media (min-width: 901px) { .hero.prog h1 { font-size: clamp(48px, 5.6cqw, 78px); white-space: normal; } }
+.hero.prog .wrap { padding-top: clamp(24px, 3vw, 42px); }
+.hero.prog .reach-me { margin-top: 16px; }
+.hero.prog .reach-me span { font-size: 14px; }
+.hero.prog h1 { font-size: clamp(34px, 9.6cqw, 60px); white-space: normal; line-height: .96; text-wrap: balance; }
+@media (min-width: 901px) { .hero.prog h1 { font-size: clamp(42px, 4.7cqw, 62px); white-space: normal; } }
+
+/* Recent sale prices, straight under the headline. */
+.tape { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: stretch; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.tape-h { display: flex; align-items: center; padding: 12px 22px 12px 0; color: var(--steel); font-size: 15px; white-space: nowrap; }
+.tape ul { display: flex; flex-wrap: wrap; flex: 1 1 0; min-width: 0; }
+.tape li { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 12px 20px; border-left: 1px solid var(--rule); }
+.tape li span { color: var(--steel); font-size: 14px; line-height: 1.25; }
+.tape li b { font-size: 22px; line-height: 1.1; }
+
+/* The large photo at the top of a program page. */
+.hero-photo { margin: clamp(20px, 2.4vw, 30px) 0 0; position: relative; background: var(--panel); }
+.hero-photo img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; }
+.hero-photo figcaption { position: absolute; left: 0; bottom: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; align-items: baseline; background: var(--ground); padding: 10px 16px 9px; font-size: 15px; color: var(--steel); max-width: 100%; }
+.hero-photo figcaption b { color: var(--white); font-size: 17px; font-weight: 700; white-space: nowrap; }
 .points { margin-top: clamp(22px, 3vw, 36px); border-top: 1px solid var(--rule); }
 .points li { padding: 14px 0 14px 30px; border-bottom: 1px solid var(--rule); font-size: 19px; font-weight: 500; position: relative; }
 .points li::before { content: ""; position: absolute; left: 2px; top: 22px; width: 14px; height: 8px; border-left: 3px solid var(--red); border-bottom: 3px solid var(--red); transform: rotate(-45deg); transform-origin: left bottom; }
-.prog-photo { width: 100%; margin-top: clamp(22px, 3vw, 36px); aspect-ratio: 16 / 10; object-fit: cover; }
-.sells-h { font-size: 20px; font-weight: 700; margin-top: clamp(26px, 3.4vw, 44px); }
+.sells-box { margin-top: clamp(26px, 3.4vw, 44px); }
+.sells-h { font-size: 20px; font-weight: 700; }
 .sells { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .sells li { border: 1px solid var(--edge); border-radius: 3px; padding: 6px 12px; font-size: 16px; }
 .more { border-top: 1px solid var(--rule); }
@@ -100,7 +118,7 @@ a { color: inherit; }
 .chips span { display: block; border: 1.5px solid var(--field); border-radius: 3px; padding: 7px 11px; background: var(--white); }
 .chips input:checked + span { background: var(--ink); border-color: var(--ink); color: var(--white); }
 .chips input:focus-visible + span { outline: 3px solid var(--blue); outline-offset: 1px; }
-.tell .btn { font-size: 18px; padding: 14px 18px; width: 100%; font-stretch: var(--wide); text-transform: uppercase; letter-spacing: .01em; }
+.tell .btn { font-size: 16px; padding: 15px 10px; width: 100%; font-stretch: var(--wide); text-transform: uppercase; letter-spacing: 0; }
 .tell .btn:focus-visible { outline-color: var(--blue); }
 .tell-err { background: #fde2e1; color: #8f0806 !important; font-weight: 600; border-radius: 3px; padding: 9px 12px; }
 .tell .hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
@@ -117,9 +135,18 @@ a { color: inherit; }
 .shots.n3 figure:first-child, .shots.n1 figure { aspect-ratio: auto; max-height: 520px; }
 .shots img { width: 100%; height: 100%; object-fit: cover; }
 
+/* ---- three facts in one row ---- */
+.facts { background: var(--panel); }
+.facts ul { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.facts li { padding: clamp(22px, 3vw, 34px) clamp(18px, 2.6vw, 36px) clamp(22px, 3vw, 34px) 0; display: flex; flex-direction: column; gap: 8px; }
+.facts li + li { border-left: 1px solid var(--edge); padding-left: clamp(18px, 2.6vw, 36px); }
+.facts b { font-size: clamp(20px, 2.1vw, 28px); overflow-wrap: anywhere; }
+.facts span { color: var(--steel); font-size: 17px; max-width: 26em; }
+
 /* ---- how it works: a real sequence, so it is numbered ---- */
 .band { padding-block: clamp(48px, 7vw, 96px); }
 .band h2 { font-size: clamp(30px, 4.2vw, 58px); max-width: 16ch; }
+.band h2.minor { font-size: clamp(22px, 2.3vw, 30px); max-width: none; letter-spacing: 0; }
 .steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px clamp(20px, 3vw, 44px); margin-top: clamp(28px, 4vw, 52px); counter-reset: step; }
 .steps li { counter-increment: step; border-top: 4px solid var(--blue); padding-top: 16px; }
 .steps li::before { content: counter(step); display: block; font-stretch: var(--wide); font-weight: 800; font-size: 54px; line-height: 1; color: var(--white); margin-bottom: 14px; }
@@ -133,24 +160,25 @@ a { color: inherit; }
 .sites li { font-size: clamp(22px, 3vw, 40px); font-weight: 700; padding: 16px 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; text-transform: none; letter-spacing: -0.01em; }
 .sites li:first-child { border-top: 1px solid var(--rule); }
 
-/* ---- recently sold, seller quotes (shown only when there is real content) ---- */
-.sold { border-top: 1px solid var(--rule); }
-.sold-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: clamp(24px, 3.4vw, 44px); }
-.sold-list li { background: var(--panel); display: flex; flex-direction: column; }
+/* ---- recently sold: the one light section, so it stands apart from everything around it ---- */
+.sold { background: #f1f3f6; color: var(--ink); }
+.sold-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: clamp(24px, 3.4vw, 44px); }
+.sold-list.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .sold-list.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sold-list.n1 { grid-template-columns: minmax(0, 520px); }
+.sold-list li { background: var(--white); display: flex; flex-direction: column; border-bottom: 4px solid var(--red); }
 .sold-list img, .sold-ph { aspect-ratio: 4 / 3; width: 100%; object-fit: cover; }
-.sold-ph { display: grid; place-items: center; color: var(--steel); border: 2px dashed var(--edge); font-size: 15px; }
-.sold-t { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 2px; color: var(--steel); font-size: 15px; }
-.sold-t b { color: var(--white); font-size: 17px; }
-.sold-p { color: var(--white); font-stretch: var(--wide); font-weight: 800; font-size: 26px; line-height: 1.15; }
-.sold-t i { font-style: normal; align-self: flex-start; margin-top: 8px; border: 1px solid var(--steel); border-radius: 3px; padding: 1px 7px; font-size: 13px; }
+.sold-ph { display: grid; place-items: center; color: #5d666f; border: 2px dashed #9aa3ad; font-size: 15px; }
+.sold-t { padding: 16px 18px 16px; display: flex; flex-direction: column; gap: 3px; color: #4a525b; font-size: 15px; }
+.sold-t b { color: var(--ink); font-size: 17px; }
+.sold-p { color: var(--ink); font-stretch: var(--wide); font-weight: 800; font-size: clamp(26px, 2.6vw, 34px); line-height: 1.1; }
+.sold-t i { font-style: normal; align-self: flex-start; margin-top: 8px; border: 1px solid #9aa3ad; border-radius: 3px; padding: 1px 7px; font-size: 13px; }
 .quotes .wrap { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 28px clamp(24px, 4vw, 56px); }
 .quotes figure { margin: 0; border-left: 4px solid var(--red); padding-left: 20px; }
 .quotes blockquote { margin: 0; font-size: 21px; line-height: 1.4; }
 .quotes figcaption { color: var(--steel); margin-top: 12px; font-size: 16px; }
 
 /* ---- who sells with us ---- */
-.fit { border-top: 1px solid var(--rule); }
-.fit-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin-top: clamp(24px, 3.4vw, 44px); border-top: 1px solid var(--rule); }
+.fit { padding-bottom: clamp(20px, 3vw, 40px); }
+.fit-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin-top: clamp(16px, 2vw, 24px); border-top: 1px solid var(--rule); }
 .fit-list li { padding: 22px 24px 6px 0; }
 .fit-list li + li { border-left: 1px solid var(--rule); padding-left: 24px; }
 .fit-list h3 { font-size: 22px; font-weight: 700; line-height: 1.2; }
@@ -198,7 +226,17 @@ a { color: inherit; }
 @media (max-width: 1060px) { .top-nav { display: none; } }
 @media (max-width: 900px) {
   .hero-cols, .reach .wrap, .faq .wrap { grid-template-columns: minmax(0, 1fr); }
-  .sold-list, .fit-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* One column: the form comes straight after the opening lines, ahead of prices, photo and details. */
+  .hero-left { display: contents; }
+  .hero-sub { order: 1; } .reach-me { order: 2; margin-top: 0; } .tell { order: 3; } .tape { order: 4; } .hero-photo { order: 5; margin-top: 0; } .points { order: 6; margin-top: 0; } .sells-box { order: 7; margin-top: 0; }
+  .ask { order: 6; margin-top: 8px; padding-bottom: 0; } .lots { order: 7; }
+  .tape-h { flex-basis: 100%; padding: 12px 0 0; }
+  .tape ul { display: grid; grid-template-columns: 1fr 1fr; flex-basis: 100%; }
+  .tape li { padding: 12px 12px 12px 0; border-left: 0; }
+  .tape li:nth-child(even) { padding-left: 14px; border-left: 1px solid var(--rule); }
+  .sold-list, .sold-list.n3, .fit-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .facts ul { grid-template-columns: minmax(0, 1fr); }
+  .facts li { padding: 18px 0; } .facts li + li { border-left: 0; padding-left: 0; border-top: 1px solid var(--edge); }
   .fit-list li:nth-child(odd) { border-left: 0; padding-left: 0; }
   .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .shots.n3 { grid-template-columns: 1fr 1fr; }
@@ -222,6 +260,13 @@ a { color: inherit; }
   .tell .pair:not(.wide-left) { grid-template-columns: minmax(0, 1fr); }
   .fit-list { grid-template-columns: minmax(0, 1fr); }
   .fit-list li + li { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); }
+  .sold-list, .sold-list.n3, .sold-list.n2 { grid-template-columns: minmax(0, 1fr); }
+  /* on a phone each sold item is a compact row: photo on the left, item and price beside it */
+  .sold-list { gap: 10px; }
+  .sold-list li { flex-direction: row; border-bottom: 0; border-left: 4px solid var(--red); }
+  .sold-list img, .sold-ph { width: 44%; flex: none; }
+  .sold-t { justify-content: center; padding: 10px 14px; }
+  .tell .btn { font-size: 15px; font-stretch: 112%; padding-inline: 6px; }
   .cta .btn { width: 100%; }
   .buy .btn { width: 100%; white-space: normal; }
 }

@@ -52,7 +52,7 @@
     fetch(cfg.url.replace(/\/$/, '') + '/rest/v1/web_leads', { method: 'POST', headers: headers, body: JSON.stringify(row) })
       .then(function (r) { if (!r.ok) throw new Error('status ' + r.status); done(name, phone); })
       .catch(function () {
-        btn.disabled = false; btn.textContent = 'Request my free consultation';
+        btn.disabled = false; btn.textContent = 'Get my free consultation';
         fail("That didn't send. Please try again, or call " + (cfg.phone || 'us') + '.');
       });
   });
