@@ -261,12 +261,6 @@ function form(program) {
 
 /* Optional sections. Each returns nothing when the program has no content for it. */
 const soldOf = p => (p.sold || []).filter(x => x.item && x.price);
-/* A slim strip of recent sale prices, shown right under the headline. */
-function tape(p) {
-  const list = soldOf(p);
-  if (list.length < 2) return '';
-  return `<div class="tape"><span class="tape-h">Recently sold</span><ul>${list.slice(0, 4).map(x => `<li><span>${esc(x.item)}</span><b class="wide">${esc(x.price)}</b></li>`).join('')}</ul></div>`;
-}
 /* The large photo at the top: a photo file named after the program if there is one, otherwise the first sold item. */
 function heroPhoto(p, o) {
   const own = o.heroPhotos && o.heroPhotos[p.slug], top = soldOf(p).find(x => x.img);
@@ -403,7 +397,6 @@ function programPage(p, o) {
     <div class="wrap">
       <h1 class="wide">${esc(p.title)}</h1>
       <div class="hero-cols">
-      ${tape(p)}
       <div class="hero-left">
         <p class="hero-sub">${esc(p.lead)}${p.leadOnly ? '' : ' ' + OFFER}</p>
         ${reachMe}

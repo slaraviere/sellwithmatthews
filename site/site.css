@@ -91,14 +91,6 @@ a { color: inherit; }
 .hero.prog h1 { font-size: clamp(34px, 9.6cqw, 60px); white-space: normal; line-height: .96; text-wrap: balance; }
 @media (min-width: 901px) { .hero.prog h1 { font-size: clamp(42px, 4.7cqw, 62px); white-space: normal; } }
 
-/* Recent sale prices, straight under the headline. */
-.tape { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: stretch; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
-.tape-h { display: flex; align-items: center; padding: 12px 22px 12px 0; color: var(--steel); font-size: 15px; white-space: nowrap; }
-.tape ul { display: flex; flex-wrap: wrap; flex: 1 1 0; min-width: 0; }
-.tape li { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1px; padding: 12px 20px; border-left: 1px solid var(--rule); }
-.tape li span { color: var(--steel); font-size: 14px; line-height: 1.25; }
-.tape li b { font-size: 22px; line-height: 1.1; }
-
 /* The large photo at the top of a program page. */
 .hero-photo { margin: clamp(20px, 2.4vw, 30px) 0 0; position: relative; background: var(--panel); }
 .hero-photo img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; }
@@ -243,12 +235,8 @@ a { color: inherit; }
   .hero-cols, .reach .wrap, .faq .wrap { grid-template-columns: minmax(0, 1fr); }
   /* One column: the form comes straight after the opening lines, ahead of prices, photo and details. */
   .hero-left { display: contents; }
-  .hero-sub { order: 1; } .reach-me { order: 2; margin-top: 0; } .tell { order: 3; } .tape { order: 4; } .hero-photo { order: 5; margin-top: 0; } .points { order: 6; margin-top: 0; } .sells-box { order: 7; margin-top: 0; }
+  .hero-sub { order: 1; } .reach-me { order: 2; margin-top: 0; } .tell { order: 3; } .hero-photo { order: 5; margin-top: 0; } .points { order: 6; margin-top: 0; } .sells-box { order: 7; margin-top: 0; }
   .ask { order: 6; margin-top: 8px; padding-bottom: 0; } .lots { order: 7; }
-  .tape-h { flex-basis: 100%; padding: 12px 0 0; }
-  .tape ul { display: grid; grid-template-columns: 1fr 1fr; flex-basis: 100%; }
-  .tape li { padding: 12px 12px 12px 0; border-left: 0; }
-  .tape li:nth-child(even) { padding-left: 14px; border-left: 1px solid var(--rule); }
   .sold-list, .sold-list.n3, .fit-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .facts ul { grid-template-columns: minmax(0, 1fr); }
   .facts li { padding: 18px 0; } .facts li + li { border-left: 0; padding-left: 0; border-top: 1px solid var(--edge); }
