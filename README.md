@@ -41,6 +41,7 @@ Wording for the public pages lives in `site/pages.mjs`. Real photos placed in
    | `SUPABASE_ANON_KEY` | The anon / publishable key from the same page | Everything |
    | `ANTHROPIC_API_KEY` | A key from the Claude Console | AI email drafting only |
    | `ANTHROPIC_MODEL` | Optional. Defaults to `claude-sonnet-5-5` | AI email drafting only |
+   | `CALENDAR_TZ` | Optional. Defaults to `America/New_York` | Time zone of appointments in the Google Calendar link |
 
    The Supabase–Vercel integration fills in the first two for you. Never put the Supabase
    `service_role` key here; the site does not use it. Redeploy after changing variables.
@@ -80,6 +81,7 @@ small team's confirmations and resets; add custom SMTP in Supabase if it becomes
 | `src/lookup.js` | Check-first search that opens before a new company or contact is added |
 | `src/leads.js` | Web leads from the public pages: the Dashboard inbox, live alert, and one-click add with a call-back task |
 | `src/calendar.js` | Calendar: a month view of appointments, optionally with tasks and follow-ups |
+| `api/calendar.js` | The address calendar apps read: a private-link feed of appointments for Google Calendar, Apple Calendar or Outlook |
 | `src/assets/` | The Matthews Auctioneers logo, cut to web sizes from the company's own file and embedded at build time |
 | `src/outreach.js` | AI email drafting and the outreach queue |
 | `src/app.js` | Event wiring shared by both builds |

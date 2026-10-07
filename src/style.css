@@ -452,3 +452,7 @@ input[type=time] { background: var(--surface); border: 1px solid var(--line); bo
   .cal-title { font-size: 20px; min-width: 0; }
   .cal-key i { width: 8px; height: 8px; border-radius: 50%; }
 }
+
+.cal-url { display: flex; gap: 8px; align-items: center; }
+.cal-url input { flex: 1 1 auto; min-width: 0; font-size: 13px; }
+.cal-steps { list-style: decimal; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
