@@ -475,6 +475,45 @@ await page.waitForSelector('#main .tbl');
 await st(page, `V.co.view = 'all'; renderNow()`);
 check('companies list: individuals are marked', await page.locator('#main .tbl tr:has-text("Mary Whitfield") .st:has-text("Individual")').count() === 1);
 
+// --- calendar
+const calPlan = await st(page, `(async () => {
+  const t = today(), d = parseYmd(t), y = d.getFullYear(), m = d.getMonth();
+  const inMonth = ymd(new Date(y, m, Math.min(d.getDate() + 1, new Date(y, m + 1, 0).getDate())));   // tomorrow, or today on the last day of the month
+  const next = ymd(new Date(y, m + 1, 10));
+  const co = [...S.co.values()].find(c => c.name.startsWith('Twin'));
+  await Store.add('tk', { id: 'cal-a', name: 'Site visit with ' + co.name, co: co.id, ct: '', rep: ME, due: inMonth, time: '09:30', location: 'Their yard', apptKind: 'Site visit', type: 'Appointment', notes: '', priority: 'Normal', status: 'Open', created: nowIso() });
+  await Store.add('tk', { id: 'cal-b', name: 'Phone call with ' + co.name, co: co.id, ct: '', rep: 'dana-x', due: next, time: '14:00', location: '', apptKind: 'Phone call', type: 'Appointment', notes: '', priority: 'Normal', status: 'Open', created: nowIso() });
+  await Store.add('tk', { id: 'cal-t', name: 'Send photos checklist', co: co.id, ct: '', rep: ME, due: inMonth, type: 'Email', notes: '', priority: 'Normal', status: 'Open', created: nowIso() });
+  await Store.patch('co', co.id, { nextFU: inMonth });
+  return { inMonth, next, co: co.name };
+})()`);
+await page.waitForFunction(() => S.tk.has('cal-t'));
+await page.click('#tabs [data-tab="calendar"]');
+await page.waitForSelector('#cal-grid');
+check('calendar: a month grid of whole weeks with today marked', (await page.locator('#cal-grid .cal-day').count()) % 7 === 0 && await page.locator('#cal-grid .cal-day.today').count() === 1 && await page.locator('#cal-grid .cal-day.sel').count() === 1);
+const calCell = `#cal-grid .cal-day[data-day="${calPlan.inMonth}"]`;
+check('calendar: the appointment shows on its day with its time', (await page.textContent(calCell)).includes('9:30a') && (await page.textContent(calCell)).includes('Site visit') && await page.locator(calCell + ' .cal-chip').count() === 1);
+await page.click(calCell);
+check('calendar: clicking a day lists it in full', (await page.textContent('#cal-side')).includes('Site visit with ' + calPlan.co) && (await page.textContent('#cal-side')).includes('Their yard') && await page.locator('#cal-side a[href^="https://calendar.google.com"]').count() === 1);
+await page.click('[data-act="cal-show"][data-show="all"]');
+check('calendar: "Everything due" adds tasks and follow-ups', await page.locator(calCell + ' .cal-chip.task').count() === 1 && await page.locator(calCell + ' .cal-chip.fu').count() === 1 && (await page.textContent('#cal-side')).includes('Send photos checklist') && (await page.textContent('#cal-side')).includes('Follow-up due'));
+await page.screenshot({ path: path.join(OUT, 'shot-calendar.png'), fullPage: true });
+await page.click('[data-act="cal-show"][data-show="appts"]');
+await page.click('#cal-side [data-act="cal-new"]');
+await page.waitForSelector('#f-due');
+check('calendar: + Appointment starts on the selected day', await page.inputValue('#f-due') === calPlan.inMonth);
+await page.click('#dlg [data-act="dlg-close"]');
+const calTitle = await page.textContent('#cal-title');
+await page.click('[data-act="cal-go"][data-step="1"]');
+check('calendar: next month shows that month\'s appointments', await page.textContent('#cal-title') !== calTitle && (await page.textContent(`#cal-grid .cal-day[data-day="${calPlan.next}"]`)).includes('Phone call'));
+await page.click('[data-act="cal-me"]');
+check('calendar: "Mine" hides other people\'s appointments', await page.locator(`#cal-grid .cal-day[data-day="${calPlan.next}"] .cal-chip`).count() === 0);
+await page.click('[data-act="cal-me"]');
+await page.click('[data-act="cal-go"][data-step="0"]');
+check('calendar: Today comes back to this month', await page.textContent('#cal-title') === calTitle && await page.locator('#cal-grid .cal-day.today.sel').count() === 1);
+await st(page, `(async () => { for (const id of ['cal-a', 'cal-b', 'cal-t']) await Store.remove('tk', id); await Store.patch('co', [...S.co.values()].find(c => c.name.startsWith('Twin')).id, { nextFU: '' }); })()`);
+await page.waitForFunction(() => !S.tk.has('cal-t'));
+
 // --- scoreboard
 await page.click('#tabs [data-tab="report"]');
 await page.waitForSelector('#rp-total');
@@ -543,6 +582,10 @@ await phone.click('.actions [data-act="log"][data-type="Phone Call"]');
 await phone.waitForSelector('#f-outcome');
 await phone.screenshot({ path: path.join(OUT, 'shot-phone-dialog.png') });
 await phone.keyboard.press('Escape');
+await phone.click('#tabs [data-tab="calendar"]');
+await phone.waitForSelector('#cal-grid');
+check('phone: no horizontal page scroll (calendar)', await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), await phone.evaluate(() => document.documentElement.scrollWidth));
+await phone.screenshot({ path: path.join(OUT, 'shot-phone-calendar.png'), fullPage: true });
 await phone.click('#tabs [data-tab="report"]');
 await phone.waitForSelector('#rp-total');
 check('phone: no horizontal page scroll (scoreboard)', await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), await phone.evaluate(() => document.documentElement.scrollWidth));

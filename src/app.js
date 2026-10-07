@@ -197,5 +197,6 @@ function startShell() {
   wireReport();
   wireLookup();
   wireLeads();
+  wireCalendar();
   render();
 }

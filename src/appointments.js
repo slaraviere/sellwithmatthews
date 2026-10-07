@@ -50,7 +50,7 @@ function apptKindChanged() {
   if (inPerson && !clean(loc.value)) loc.value = addr;
   else if (!inPerson && clean(loc.value) === addr) loc.value = '';
 }
-function openAppt(id, coId, ctId) {
+function openAppt(id, coId, ctId, onDay) {
   const t = id ? S.tk.get(id) : null;
   if (t) coId = t.co;
   const c = coId ? S.co.get(coId) : null;
@@ -67,7 +67,7 @@ function openAppt(id, coId, ctId) {
     { k: 'notes', label: 'Notes', type: 'textarea', full: true, ph: 'What to bring, what they want to sell, gate codes' },
   ];
   if (t) spec.push({ k: 'status', label: 'Status', type: 'select', opts: ['Open', 'Completed', 'Cancelled'], noBlank: true, full: true });
-  const vals = t ? Object.assign({}, t, { status: t.status === 'Snoozed' ? 'Open' : t.status }) : { apptKind: 'Phone call', ct: ctId || (prim ? prim.id : ''), rep: ME || (c && c.rep) || '', due: addBizDays(today(), 1), time: '10:00' };
+  const vals = t ? Object.assign({}, t, { status: t.status === 'Snoozed' ? 'Open' : t.status }) : { apptKind: 'Phone call', ct: ctId || (prim ? prim.id : ''), rep: ME || (c && c.rep) || '', due: onDay && onDay >= today() ? onDay : addBizDays(today(), 1), time: '10:00' };
   openDialog({
     title: t ? 'Edit appointment' : 'Schedule appointment', wide: true, body: fieldsHtml(spec, vals), submitLabel: t ? 'Save' : 'Schedule',
     extra: t ? `<button type="button" class="btn danger" data-act="del" data-kind="tk" data-id="${esc(t.id)}">Delete</button>` : '',

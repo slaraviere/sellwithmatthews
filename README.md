@@ -79,6 +79,7 @@ small team's confirmations and resets; add custom SMTP in Supabase if it becomes
 | `src/report.js` | Scoreboard: outreach counts, leaderboard, streaks and call outcomes, all computed from the activity log |
 | `src/lookup.js` | Check-first search that opens before a new company or contact is added |
 | `src/leads.js` | Web leads from the public pages: the Dashboard inbox, live alert, and one-click add with a call-back task |
+| `src/calendar.js` | Calendar: a month view of appointments, optionally with tasks and follow-ups |
 | `src/assets/` | The Matthews Auctioneers logo, cut to web sizes from the company's own file and embedded at build time |
 | `src/outreach.js` | AI email drafting and the outreach queue |
 | `src/app.js` | Event wiring shared by both builds |
