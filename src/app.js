@@ -189,12 +189,13 @@ function wire() {
 }
 
 function startShell() {
-  $('#tabs').innerHTML = TABS.map(([id, l]) => `<button type="button" data-act="tab" data-tab="${id}">${l}${id === 'review' ? '<span class="badge" id="review-badge" hidden></span>' : ''}${id === 'outreach' ? '<span class="badge" id="out-badge" hidden></span>' : ''}</button>`).join('');
+  $('#tabs').innerHTML = TABS.map(([id, l]) => `<button type="button" data-act="tab" data-tab="${id}">${l}${id === 'dashboard' ? '<span class="badge" id="lead-badge" hidden></span>' : ''}${id === 'review' ? '<span class="badge" id="review-badge" hidden></span>' : ''}${id === 'outreach' ? '<span class="badge" id="out-badge" hidden></span>' : ''}</button>`).join('');
   const h = (location.hash || '').slice(1);
   if (TABS.some(t => t[0] === h)) V.tab = h;
   wire();
   wirePipeline();
   wireReport();
   wireLookup();
+  wireLeads();
   render();
 }

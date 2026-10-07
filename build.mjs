@@ -1,7 +1,9 @@
-// Builds two single-file pages from the same source:
-//   dist/matthews-consignment-crm.html  the Claude-hosted build (published as a Claude artifact)
-//   public/index.html                   the website build (Vercel + Supabase)
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+// Builds from the same source:
+//   dist/matthews-consignment-crm.html  the CRM as a Claude-hosted page (published as a Claude artifact)
+//   public/crm/index.html               the CRM on the website (Vercel + Supabase), for the team
+//   public/*.html                       the public "Sell with Matthews" pages (see site/pages.mjs)
+import { readFileSync, writeFileSync, mkdirSync, cpSync, existsSync, readdirSync, rmSync } from 'node:fs';
+import { buildSite } from './site/pages.mjs';
 
 const r = f => readFileSync(new URL('./src/' + f, import.meta.url), 'utf8');
 const out = (p, text) => { mkdirSync(new URL(p.replace(/[^/]+$/, ''), import.meta.url), { recursive: true }); writeFileSync(new URL(p, import.meta.url), text); console.log('built', p, (text.length / 1024).toFixed(1) + ' KB'); };
@@ -17,7 +19,7 @@ const css = r('style.css'), body = brand(r('body.html'));
 
 // --- Claude-hosted build: the publisher wraps this fragment in its own document skeleton.
 out('./dist/matthews-consignment-crm.html',
-  `<title>${TITLE}</title>\n${FONTS}\n<style>\n${css}\n</style>\n${body}<script>\n${js(['core.js', 'store-claude.js', 'ui.js', 'appointments.js', 'pipeline.js', 'report.js', 'lookup.js', 'import.js', 'outreach.js', 'app.js', 'boot-claude.js'])}\n</script>\n`);
+  `<title>${TITLE}</title>\n${FONTS}\n<style>\n${css}\n</style>\n${body}<script>\n${js(['core.js', 'store-claude.js', 'ui.js', 'appointments.js', 'pipeline.js', 'report.js', 'lookup.js', 'leads.js', 'import.js', 'outreach.js', 'app.js', 'boot-claude.js'])}\n</script>\n`);
 
 // --- Website build: a complete document. The Supabase project URL and public (anon /
 // publishable) key come from the environment at build time; both are safe to ship to browsers
@@ -29,7 +31,7 @@ const config = {
 };
 if (!config.url || !config.key) console.warn('note: SUPABASE_URL / SUPABASE_ANON_KEY are not set; the website build will show a "not configured" message.');
 const RESET = ':root{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}';
-out('./public/index.html', `<!doctype html>
+out('./public/crm/index.html', `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -47,8 +49,21 @@ ${css}
 ${body}<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>window.__CRM_CONFIG__ = ${JSON.stringify(config).replace(/</g, '\\u003c')};</script>
 <script>
-${js(['core.js', 'store-web.js', 'ui.js', 'appointments.js', 'pipeline.js', 'report.js', 'lookup.js', 'import.js', 'outreach.js', 'app.js', 'boot-web.js'])}
+${js(['core.js', 'store-web.js', 'ui.js', 'appointments.js', 'pipeline.js', 'report.js', 'lookup.js', 'leads.js', 'import.js', 'outreach.js', 'app.js', 'boot-web.js'])}
 </script>
 </body>
 </html>
 `);
+
+// --- Public pages. Their form adds a row to web_leads with the same public key; visitors can
+// add a row and nothing else. Real photos dropped into site/img/photos/ appear on the front page.
+const photoDir = new URL('./site/img/photos/', import.meta.url);
+const photos = existsSync(photoDir) ? readdirSync(photoDir).filter(f => /\.(jpe?g|png|webp)$/i.test(f)).sort().map(f => ({ src: 'img/photos/' + f, alt: '' })) : [];
+// A photo named after a program (site/img/equipment.jpg, dealers.jpg, estates.jpg, real-estate.jpg) appears on that program's page.
+const heroPhotos = {};
+for (const slug of ['equipment', 'dealers', 'estates', 'real-estate']) for (const e of ['jpg', 'jpeg', 'png', 'webp']) if (!heroPhotos[slug] && existsSync(new URL('./site/img/' + slug + '.' + e, import.meta.url))) heroPhotos[slug] = 'img/' + slug + '.' + e;
+// Only programs marked published in site/pages.mjs are built. SITE_ALL=1 builds every program, for previews.
+for (const f of existsSync(new URL('./public/', import.meta.url)) ? readdirSync(new URL('./public/', import.meta.url)) : []) if (f.endsWith('.html')) rmSync(new URL('./public/' + f, import.meta.url));
+for (const [file, html] of Object.entries(buildSite({ config, photos, heroPhotos, all: !!env.SITE_ALL }))) out('./public/' + file, html);
+for (const f of ['site.css', 'site.js']) cpSync(new URL('./site/' + f, import.meta.url), new URL('./public/' + f, import.meta.url));
+for (const d of ['fonts', 'img']) cpSync(new URL('./site/' + d + '/', import.meta.url), new URL('./public/' + d + '/', import.meta.url), { recursive: true });

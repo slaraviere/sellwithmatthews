@@ -1,15 +1,28 @@
-# Matthews Consignment CRM
+# Sell with Matthews
 
-Equipment consignment prospecting CRM for Matthews Auctioneers: companies, contacts,
-activity, tasks, opportunities, territories, spreadsheet import, a review queue and
-AI-drafted outreach.
+Two things in one site for Matthews Auctioneers:
 
-One codebase, two builds:
+- **Public pages** for people with something to sell: a front page and one page per program
+  (equipment, dealer trade-ins, estates, real estate). Each has a free-consultation form.
+- **The CRM** the team uses to prospect and follow up: companies, individuals, contacts,
+  activity, tasks, appointments, opportunities, territories, a scoreboard, spreadsheet import,
+  a review queue and AI-drafted outreach. Form submissions arrive in it as web leads.
 
-| Build | Output | Runs on | Data | Sign-in |
+| What | Output | Address | Data | Sign-in |
 |---|---|---|---|---|
-| Website | `public/index.html` + `api/draft.js` | Vercel | Supabase (Postgres) | Supabase Auth |
-| Claude-hosted | `dist/matthews-consignment-crm.html` | A Claude artifact | The artifact's own database | The viewer's Claude account |
+| Public pages | `public/*.html` (from `site/`) | `/`, `/equipment`, `/dealers`, `/estates`, `/real-estate` | Adds rows to `web_leads` | None |
+| CRM on the website | `public/crm/index.html` + `api/draft.js` | `/crm` | Supabase (Postgres) | Supabase Auth |
+| CRM as a Claude-hosted page | `dist/matthews-consignment-crm.html` | A Claude artifact | The artifact's own database | The viewer's Claude account |
+
+Links from the main site can carry a tag so each lead records where it came from, for example
+`/equipment?src=main-site`.
+
+A program's page is only built for the live site when it is marked `published: true` in
+`site/pages.mjs`. With one program published, the site's front address forwards to that page.
+`SITE_ALL=1 node build.mjs` builds every program for a local preview.
+
+Wording for the public pages lives in `site/pages.mjs`. Real photos placed in
+`site/img/photos/` appear on the front page; with none, that band is left out.
 
 ## Putting the website live
 
@@ -65,6 +78,7 @@ small team's confirmations and resets; add custom SMTP in Supabase if it becomes
 | `src/appointments.js` | Scheduling appointments (stored as tasks with a time, place and kind) |
 | `src/report.js` | Scoreboard: outreach counts, leaderboard, streaks and call outcomes, all computed from the activity log |
 | `src/lookup.js` | Check-first search that opens before a new company or contact is added |
+| `src/leads.js` | Web leads from the public pages: the Dashboard inbox, live alert, and one-click add with a call-back task |
 | `src/assets/` | The Matthews Auctioneers logo, cut to web sizes from the company's own file and embedded at build time |
 | `src/outreach.js` | AI email drafting and the outreach queue |
 | `src/app.js` | Event wiring shared by both builds |

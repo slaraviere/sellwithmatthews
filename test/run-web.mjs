@@ -1,6 +1,6 @@
-// End-to-end test of the website build (public/index.html) against the real database
+// End-to-end test of the website build (public/crm/index.html) against the real database
 // schema running in an in-memory Postgres, with row-level security enforced.
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { launch } from './browser.mjs';
@@ -9,7 +9,7 @@ import { makeDb } from './pg.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'test', 'out');
 mkdirSync(OUT, { recursive: true });
-const html = readFileSync(path.join(ROOT, 'public', 'index.html'), 'utf8')
+const html = readFileSync(path.join(ROOT, 'public', 'crm', 'index.html'), 'utf8')
   .replace(/window\.__CRM_CONFIG__ = [^;]*;/, 'window.__CRM_CONFIG__ = {"url":"https://example.supabase.co","key":"test-anon-key"};');
 const mock = readFileSync(path.join(ROOT, 'test', 'mock-supabase.js'), 'utf8');
 
@@ -335,6 +335,186 @@ check('missing AI key: says what to set', (await page4.textContent('#dlg-msg')).
 const phone = await newPage(A, { viewport: { width: 400, height: 800 }, signedOut: true });
 await phone.waitForSelector('#web-auth');
 check('phone: sign-in fits', await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+
+// --- public pages: the consultation form, and what a visitor may and may not do
+const anonSql = (sql, params) => queue(async () => {
+  await db.query(`select set_config('request.jwt.claims', '', false)`);
+  await db.exec('set role anon');
+  try { return { rows: (await db.query(sql, params || [])).rows }; }
+  catch (e) { return { error: { code: e.code, message: e.message } }; }
+  finally { await db.exec('reset role'); }
+});
+check('visitor can send a lead', !(await anonSql(`insert into web_leads (name, phone, program) values ('Direct Test', '2765550001', 'Equipment')`)).error);
+check('visitor cannot read leads', !!(await anonSql(`select * from web_leads`)).error);
+check('visitor cannot read companies', !!(await anonSql(`select * from companies`)).error);
+check('visitor cannot mark a lead handled', !!(await anonSql(`insert into web_leads (name, phone, status) values ('X', '2765550002', 'added')`)).error);
+check('visitor cannot change or delete leads', !!(await anonSql(`update web_leads set name = 'Y'`)).error && !!(await anonSql(`delete from web_leads`)).error);
+check('a lead needs a way to reach the person', !!(await anonSql(`insert into web_leads (name) values ('No Contact')`)).error);
+check('a stranger with an account cannot read leads', ((await runAs(C)(`select count(*)::int n from web_leads`)).rows || [{ n: -1 }])[0].n === 0);
+
+// The public pages are tested with every program included; what the live build leaves out is checked separately below.
+const { buildSite } = await import('../site/pages.mjs');
+const { cpSync } = await import('node:fs');
+const PUB = path.join(OUT, 'site');
+mkdirSync(PUB, { recursive: true });
+for (const [file, page] of Object.entries(buildSite({ all: true }))) writeFileSync(path.join(PUB, file), page);
+for (const f of ['site.css', 'site.js', 'fonts', 'img']) cpSync(path.join(ROOT, 'site', f), path.join(PUB, f), { recursive: true });
+const liveSite = buildSite();
+check('live build: only published programs get a page', JSON.stringify(Object.keys(liveSite).sort()) === JSON.stringify(['equipment.html', 'index.html']));
+check('live build: nothing on the equipment page points at an unpublished page', !/href="(dealers|estates|real-estate|\.\/)"/.test(liveSite['equipment.html']) && liveSite['equipment.html'].includes('href="crm/"') && liveSite['equipment.html'].includes('https://www.matthewsauctioneers.com/'));
+check('live build: the front address forwards to the equipment page and still hands sign-in links to the CRM', liveSite['index.html'].includes("location.replace('crm/' + location.hash)") && liveSite['index.html'].includes('location.replace("equipment" + location.search)') && !liveSite['index.html'].includes('dealers'));
+check('live build matches what is in public/', readFileSync(path.join(ROOT, 'public', 'equipment.html'), 'utf8').replace(/window\.__SITE__ = \{[^;]*\};/, '') === liveSite['equipment.html'].replace(/window\.__SITE__ = \{[^;]*\};/, '') && !existsSync(path.join(ROOT, 'public', 'dealers.html')));
+const TYPES = { html: 'text/html', css: 'text/css', js: 'text/javascript', png: 'image/png', jpg: 'image/jpeg', woff2: 'font/woff2' };
+async function sitePage(viewport) {
+  const ctx = await browser.newContext({ viewport: viewport || { width: 1280, height: 900 } });
+  const p = await ctx.newPage();
+  p.on('pageerror', e => errors.push('site pageerror: ' + e.message));
+  p.__posts = []; p.__fail = false;
+  await p.route('**/*', async route => {
+    const req = route.request(), u = new URL(req.url());
+    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': '*' };
+    if (u.hostname === 'example.supabase.co') {
+      if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
+      if (u.pathname !== '/rest/v1/web_leads' || req.method() !== 'POST') return route.fulfill({ status: 404, headers: cors, body: '' });
+      const row = JSON.parse(req.postData() || '{}'), keys = Object.keys(row).map(k => '"' + k.replace(/"/g, '') + '"').join(', ');
+      p.__posts.push({ row, headers: req.headers() });
+      if (p.__fail) return route.fulfill({ status: 500, headers: cors, body: '' });
+      const res = await anonSql(`insert into web_leads (${keys}) select ${keys} from jsonb_populate_record(null::web_leads, $1::jsonb)`, [JSON.stringify(row)]);
+      return route.fulfill({ status: res.error ? 403 : 201, headers: cors, body: '' });
+    }
+    if (u.hostname !== 'site.test') return route.abort();
+    if (u.pathname.startsWith('/crm')) return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>crm</title>' });
+    let f = path.join(PUB, u.pathname === '/' ? 'index.html' : u.pathname);
+    if (!existsSync(f) && existsSync(f + '.html')) f += '.html';
+    if (!existsSync(f)) return route.fulfill({ status: 404, body: 'not found' });
+    let body = readFileSync(f);
+    if (f.endsWith('.html')) body = body.toString('utf8').replace(/window\.__SITE__ = \{[^;]*\};/, 'window.__SITE__ = {"url":"https://example.supabase.co","key":"test-anon-key","phone":"(276) 235-0153"};');
+    return route.fulfill({ status: 200, contentType: TYPES[f.split('.').pop()] || 'application/octet-stream', body });
+  });
+  return p;
+}
+const site = await sitePage();
+await site.goto('https://site.test/');
+check('front page: offer, four programs and the main-site button', (await site.textContent('.tell')).includes('free consultation') && await site.locator('.lots a').count() === 4 && await site.locator('a[href="https://www.matthewsauctioneers.com/"]').count() >= 2 && await site.locator('a[href^="tel:+1276"]').count() >= 2);
+await site.click('.lots a[href="dealers"]');
+await site.waitForURL('https://site.test/dealers');
+check('program page: its own form with the program picked', await site.inputValue('.tell select[name=program]') === 'Dealer trade-ins' && await site.locator('.tell input[name=company]').count() === 1 && (await site.textContent('h1')).includes('trade-ins'));
+await site.goto('https://site.test/dealers?src=main-site');
+await site.click('.tell button[type=submit]');
+check('form: asks for a name before sending', (await site.textContent('#tell-err')).includes('name') && site.__posts.length === 0);
+await site.fill('.tell input[name=name]', 'Wade Turner');
+await site.fill('.tell input[name=phone]', '12');
+await site.click('.tell button[type=submit]');
+check('form: asks for a real phone number', (await site.textContent('#tell-err')).includes('phone') && site.__posts.length === 0);
+await site.fill('.tell input[name=phone]', '276-555-0142');
+await site.fill('.tell input[name=company]', 'Turner Equipment Sales');
+await site.fill('.tell textarea[name=details]', 'Six trade-in skid steers and a mini excavator.');
+await site.waitForTimeout(1600);
+await site.click('.tell button[type=submit]');
+await site.waitForSelector('.tell.sent');
+check('form: thanks the person and says what happens next', (await site.textContent('.tell')).includes('Thanks, Wade') && (await site.textContent('.tell')).includes('276-555-0142'));
+const wade = await one(`select * from web_leads where name = 'Wade Turner'`);
+check('form: lead saved with program, page and where they came from', wade && wade.company === 'Turner Equipment Sales' && wade.program === 'Dealer trade-ins' && wade.source === 'main-site' && wade.page === '/dealers' && wade.status === 'new' && wade.details.includes('skid steers'), wade);
+check('form: sends the public key and nothing else', site.__posts[0].headers.apikey === 'test-anon-key' && !site.__posts[0].headers.authorization);
+await site.goto('https://site.test/equipment');
+site.__fail = true;
+await site.fill('.tell input[name=name]', 'Chip Test'); await site.fill('.tell input[name=phone]', '2765550145'); await site.fill('.tell input[name=zip]', '24333');
+await site.check('.tell input[name=has][value="Excavator"]'); await site.check('.tell input[name=has][value="Trailer"]');
+await site.fill('.tell textarea[name=details]', '2015 model, 4,200 hours');
+await site.waitForTimeout(1600);
+await site.click('.tell button[type=submit]');
+await site.waitForFunction(() => !document.querySelector('#tell-err').hidden);
+const chip = site.__posts[site.__posts.length - 1].row;
+check('equipment page: tapped choices, ZIP and details are sent together', chip.program === 'Equipment' && chip.zip === '24333' && chip.details === 'Has: Excavator, Trailer.\n2015 model, 4,200 hours' && chip.page === '/equipment' && await site.locator('.tell select').count() === 0, chip);
+check('equipment page: a visitor may fill in the ZIP column', !(await anonSql(`insert into web_leads (name, phone, zip, details) values ('Zip Probe', '2765550146', '24333', 'Has: Dozer.')`)).error);
+await admin(`delete from web_leads where name = 'Zip Probe'`);
+check('equipment page: questions, who it is for and a closing call to action', await site.locator('.faq details').count() >= 3 && await site.locator('.fit-list li').count() === 4 && await site.locator('.cta a[href="#tell"]').count() === 1);
+check('equipment page: real sale results at the top and in the cards, no sample placeholders', await site.locator('.tape li').count() === 4 && (await site.textContent('.hero-photo figcaption')).includes('$45,000') && await site.locator('.sold-list li').count() === 3 && await site.locator('.sold-list img').count() === 3 && !(await site.textContent('main')).includes('Sample') && await site.evaluate(() => [...document.querySelectorAll('.hero-photo img, .sold-list img')].every(i => !i.complete || i.naturalWidth > 0)));
+check('equipment page is a funnel: no menu, no way out at the top, one quiet link at the bottom', await site.locator('.top-nav').count() === 0 && await site.locator('.top a[href^="http"]').count() === 0 && await site.locator('.top a[href="#tell"]').count() === 1 && await site.locator('.top a[href^="tel:"]').count() === 1 && await site.locator('.buy').count() === 0 && await site.locator('.more').count() === 0 && await site.locator('.foot a[href="https://www.matthewsauctioneers.com/"]').count() === 1);
+check('equipment page: each fact is stated once', (await site.textContent('main')).split('EquipmentFacts.com').length === 2 && await site.locator('.facts li').count() === 3 && await site.locator('.reach').count() === 0 && (await site.textContent('.tell button[type=submit]')).trim() === 'Get my free consultation');
+site.__fail = false;
+await site.goto('https://site.test/estates');
+check('where they came from is kept across pages', await site.evaluate(() => sessionStorage.getItem('swm-src')) === 'main-site');
+site.__fail = true;
+await site.fill('.tell input[name=name]', 'Fail Case'); await site.fill('.tell input[name=phone]', '2765550143');
+await site.waitForTimeout(1600);
+await site.click('.tell button[type=submit]');
+await site.waitForFunction(() => !document.querySelector('#tell-err').hidden);
+check('form: a failed send says so and gives the phone number', (await site.textContent('#tell-err')).includes('(276) 235-0153') && await site.locator('.tell input[name=name]').count() === 1 && await site.isEnabled('.tell button[type=submit]'));
+site.__fail = false;
+const before2 = site.__posts.length;
+await site.goto('https://site.test/');
+await site.fill('.tell input[name=name]', 'Spam Bot'); await site.fill('.tell input[name=phone]', '2765550144');
+await site.evaluate(() => { document.querySelector('.tell input[name=website]').value = 'http://spam.example'; });
+await site.waitForTimeout(1600);
+await site.click('.tell button[type=submit]');
+await site.waitForSelector('.tell.sent');
+check('form: a filled trap field sends nothing', site.__posts.length === before2 && (await one(`select count(*)::int n from web_leads where name = 'Spam Bot'`)).n === 0);
+await site.goto('about:blank');
+await site.goto('https://site.test/#access_token=abc&type=recovery');
+await site.waitForURL(/\/crm\//);
+check('team email links that land on the front page are passed to the CRM', site.url() === 'https://site.test/crm/#access_token=abc&type=recovery');
+const sphone = await sitePage({ width: 390, height: 800 });
+for (const pg of ['', 'equipment', 'dealers', 'estates', 'real-estate']) {
+  await sphone.goto('https://site.test/' + pg);
+  check('public phone layout fits: ' + (pg || 'front page'), await sphone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth) && await sphone.locator('.callbar').isVisible());
+}
+
+// --- the CRM side: the inbox, the live alert, adding and dismissing
+const page5 = await newPage(A);
+await page5.waitForFunction(() => typeof S !== 'undefined' && S.ready, null, { timeout: 10000 });
+await page5.waitForSelector('#leads-panel');
+check('CRM: waiting web leads show on the dashboard with a count', (await page5.textContent('#leads-panel')).includes('Wade Turner') && (await page5.textContent('#leads-panel')).includes('Direct Test') && await page5.textContent('#lead-badge') === '2');
+await anonSql(`insert into web_leads (name, phone, program, details, source, page) values ('Nora Fields', '3365550170', 'Estate', 'My mother''s farmhouse and its contents.', 'Direct', '/estates')`);
+const nora = await one(`select * from web_leads where name = 'Nora Fields'`);
+await st(page5, `window.__rt(${JSON.stringify({ eventType: 'INSERT', schema: 'public', table: 'web_leads', new: nora, old: {} })})`);
+await page5.waitForFunction(() => document.querySelector('#lead-badge').textContent === '3');
+check('CRM: a new lead alerts whoever is signed in', (await page5.textContent('#toasts')).includes('New from the website: Nora Fields'));
+await page5.click(`#leads-panel [data-act="lead-open"][data-id="${wade.id}"] >> nth=0`);
+await page5.waitForSelector('#lead-add');
+check('CRM: the lead shows what they sent', (await page5.textContent('#dlg')).includes('Six trade-in skid steers') && (await page5.textContent('#dlg')).includes('main-site') && (await page5.textContent('#lead-add')).includes('a company'));
+await page5.screenshot({ path: path.join(OUT, 'web-lead.png') });
+await page5.click('#lead-add');
+await page5.waitForSelector('.detail-head');
+await st(page5, `Store._chain`);
+await page5.waitForFunction(() => document.querySelector('#lead-badge').textContent === '2');
+const tid = (await one(`select id from team_members where user_id = $1`, [A.id])).id;
+const added = await one(`select c.id, c.name, c.lead_source, c.lead_status, c.assigned_rep_id,
+  (select count(*)::int from contacts k where k.company_id = c.id and k.first_name = 'Wade' and k.last_name = 'Turner' and k.mobile_phone = '276-555-0142' and k.is_primary) ct,
+  (select count(*)::int from activities a where a.company_id = c.id and a.activity_type = 'Note' and a.notes like '%Six trade-in skid steers%') notes,
+  (select count(*)::int from tasks t where t.company_id = c.id and t.name like 'Call back Wade Turner%' and t.due_date = current_date and t.priority = 'High' and t.assigned_to_id = $1) tasks
+  from companies c where c.name = 'Turner Equipment Sales'`, [tid]);
+const wade2 = await one(`select status, company_id, handled_by_id, handled_at from web_leads where name = 'Wade Turner'`);
+check('CRM: adding a lead creates the company, contact, note and a call-back task for today', added && added.lead_source === 'Website: main-site' && added.lead_status === 'New' && added.assigned_rep_id === tid && added.ct === 1 && added.notes === 1 && added.tasks === 1, added);
+check('CRM: the lead is marked handled and tied to the record', wade2.status === 'added' && wade2.company_id === added.id && wade2.handled_by_id === tid && !!wade2.handled_at, wade2);
+check('CRM: lands on the new page', (await page5.textContent('.detail-head h1')).includes('Turner Equipment Sales'));
+await page5.click('#tabs [data-tab="dashboard"]');
+await page5.click(`#leads-panel [data-act="lead-open"][data-id="${nora.id}"] >> nth=0`);
+await page5.waitForSelector('#lead-add');
+check('CRM: a lead with no company is offered as an individual', (await page5.textContent('#lead-add')).includes('an individual'));
+await page5.click('#lead-add');
+await page5.waitForSelector('.detail-head');
+await st(page5, `Store._chain`);
+const noraCo = await one(`select industry, lines, lead_type from companies where name = 'Nora Fields'`);
+check('CRM: an estate lead becomes an individual on the Estate line', noraCo && noraCo.industry === 'Individual / Family' && JSON.stringify(noraCo.lines) === '["Estate"]' && noraCo.lead_type === 'Estate', noraCo);
+await anonSql(`insert into web_leads (name, phone, program) values ('Tom Hale', '540-555-0199', 'Equipment')`);
+const tom = await one(`select * from web_leads where name = 'Tom Hale'`);
+await st(page5, `window.__rt(${JSON.stringify({ eventType: 'INSERT', schema: 'public', table: 'web_leads', new: tom, old: {} })})`);
+const brg = await one(`select c.id, (select count(*)::int from contacts k where k.company_id = c.id) ct from companies c where c.name like 'Blue Ridge Grading%' order by c.created_at limit 1`);
+await st(page5, `openLead(${JSON.stringify(tom.id)})`);
+await page5.waitForSelector('#lead-matches');
+check('CRM: a lead from someone already in the CRM shows the match', (await page5.textContent('#lead-matches')).includes('Blue Ridge Grading'));
+await page5.click(`#lead-matches [data-act="lead-add"][data-co="${brg.id}"]`);
+await page5.waitForSelector('.detail-head');
+await st(page5, `Store._chain`);
+const brg2 = await one(`select (select count(*)::int from contacts k where k.company_id = $1) ct, (select count(*)::int from companies where name = 'Tom Hale') dup, (select count(*)::int from tasks t where t.company_id = $1 and t.name like 'Call back Tom Hale%') tasks, (select company_id from web_leads where name = 'Tom Hale') lead_co`, [brg.id]);
+check('CRM: adding to an existing record makes no duplicate company or contact', brg2.ct === brg.ct && brg2.dup === 0 && brg2.tasks === 1 && brg2.lead_co === brg.id, brg2);
+const direct = await one(`select id from web_leads where name = 'Direct Test'`);
+await st(page5, `openLead(${JSON.stringify(direct.id)})`);
+await page5.click('[data-act="lead-dismiss"]');
+await page5.click('[data-act="lead-dismiss"]');
+await page5.waitForFunction(() => document.querySelector('#lead-badge').hidden);
+check('CRM: a dismissed lead leaves the inbox and is kept in the database', (await one(`select status from web_leads where name = 'Direct Test'`)).status === 'dismissed' && await st(page5, `newLeads().length`) === 0);
 
 const expected = errors.filter(e => /^console: \{code: (not_configured|denied)/.test(e));
 const real = errors.filter(e => !expected.includes(e));

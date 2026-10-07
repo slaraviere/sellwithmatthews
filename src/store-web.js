@@ -171,6 +171,7 @@ const Store = {
     else if (p.table === 'territories') { if (type === 'DELETE') delete S.terr[row.code]; else S.terr[row.code] = rowToTerr(row); S.cfgVer++; }
     else if (p.table === 'team_members') { if (type === 'DELETE') delete S.team[row.id]; else S.team[row.id] = rowToTeam(row); S.cfgVer++; }
     else if (p.table === 'settings') { if (row.key === 'outreach' && type !== 'DELETE') S.outreach = row.value || {}; S.cfgVer++; }
+    else if (p.table === 'web_leads') leadRemote(type, row);
     else return;
     S.ver++; this.onChange(false);
   },
