@@ -60,7 +60,7 @@ SCREENS.calendar = function () {
   const dayPanel = `<section class="panel cal-side" id="cal-side"><div class="panel-h"><h3>${esc(selTitle)}</h3>${f.day >= t ? `<button type="button" class="btn sm primary w" data-act="cal-new" data-day="${f.day}">+ Appointment</button>` : ''}</div>
     ${sel.length ? `<ul class="rows">${selRows}</ul>` : `<p class="muted">${f.show === 'all' ? 'Nothing is due this day.' : 'No appointments this day.'}</p>`}</section>`;
 
-  return `<div class="page-head"><div><h1>Calendar</h1><p class="sub">${apptCount} ${apptCount === 1 ? 'appointment' : 'appointments'} still to come in ${esc(title)}</p></div><div class="row"><button type="button" class="btn primary w" data-act="cal-new" data-day="${f.day >= t ? f.day : ''}">+ Appointment</button></div></div>
+  return `<div class="page-head"><div><h1>Calendar</h1><p class="sub">${apptCount} ${apptCount === 1 ? 'appointment' : 'appointments'} still to come in ${esc(title)}</p></div><div class="row">${PLATFORM === 'web' ? `<button type="button" class="btn" data-act="cal-link">Show in Google Calendar</button>` : ''}<button type="button" class="btn primary w" data-act="cal-new" data-day="${f.day >= t ? f.day : ''}">+ Appointment</button></div></div>
     <div class="filters"><div class="cal-nav"><button type="button" class="btn sm" data-act="cal-go" data-step="-1" aria-label="Previous month">‹</button><button type="button" class="btn sm" data-act="cal-go" data-step="0">Today</button><button type="button" class="btn sm" data-act="cal-go" data-step="1" aria-label="Next month">›</button><span class="cal-title" id="cal-title">${esc(title)}</span></div>
       <div class="seg" role="tablist" aria-label="What to show"><button type="button" role="tab" aria-selected="${f.show === 'appts'}" class="${f.show === 'appts' ? 'on' : ''}" data-act="cal-show" data-show="appts">Appointments</button><button type="button" role="tab" aria-selected="${f.show === 'all'}" class="${f.show === 'all' ? 'on' : ''}" data-act="cal-show" data-show="all">Everything due</button></div>
       ${ME ? `<button type="button" class="pill${f.rep === ME ? ' on' : ''}" data-act="cal-me">Mine</button>` : ''}${fsel('cal', 'rep', 'Whose', repOpts(false))}</div>
@@ -68,7 +68,33 @@ SCREENS.calendar = function () {
       ${f.show === 'all' ? `<div class="cal-key"><span><i class="cal-chip appt"></i>Appointment</span><span><i class="cal-chip task"></i>Task</span><span><i class="cal-chip fu"></i>Follow-up</span></div>` : ''}</div>${dayPanel}</div>`;
 };
 
+/* Website only: a private link that Google Calendar (or any calendar app) subscribes to, so CRM
+   appointments show up there on their own. The link is made and checked by the database. */
+async function openCalLink(reset) {
+  let tok = '', err = '';
+  try {
+    const { data, error } = await Store.client.rpc('my_calendar_token', { p_reset: !!reset });
+    if (error) throw error;
+    tok = data || '';
+  } catch (e) {
+    err = /PGRST202|42883|does not exist|Could not find/i.test((e.code || '') + ' ' + (e.message || '')) ? 'The calendar link needs a database update first. Ask your CRM admin to run the calendar link update in Supabase.' : 'Could not get your calendar link just now. Try again in a moment.';
+  }
+  const base = location.origin + '/api/calendar?token=' + tok;
+  const linkRow = (label, url, id) => `<div class="fld full"><label for="${id}">${esc(label)}</label><div class="cal-url"><input id="${id}" type="text" readonly value="${esc(url)}" data-hold><button type="button" class="btn sm" data-act="copy" data-text="${esc(url)}">Copy</button></div></div>`;
+  openDialog({
+    title: 'Show appointments in Google Calendar', wide: true, cancelLabel: 'Close',
+    body: err ? `<div class="dlg-msg">${esc(err)}</div>` : `<p class="dlg-sub">Subscribe once and your CRM appointments appear in Google Calendar on their own, on your phone too.</p>
+      <div class="grid">${linkRow('Your appointments', base, 'cal-url-mine')}${linkRow('Everyone\'s appointments', base + '&who=all', 'cal-url-all')}</div>
+      <ol class="cal-steps"><li>Copy one of the links above.</li><li>Open Google Calendar on a computer. Next to <b>Other calendars</b>, click <b>+</b>, then <b>From URL</b>.</li><li>Paste the link and click <b>Add calendar</b>.</li></ol>
+      <p class="muted">Google checks for changes on its own schedule, so a new appointment can take several hours to show up there. For one you need right away, use <b>Add to calendar</b> on the appointment. Changes made in Google Calendar do not come back to the CRM.</p>
+      <p class="muted">Anyone with a link can see those appointments, so keep it to yourself. If it gets out, make a new one and the old link stops working.</p>${reset ? '<div class="gate-ok" id="cal-reset-ok">New link made. The old one no longer works, so add this one in Google Calendar and remove the old calendar there.</div>' : ''}`,
+    extra: err ? '' : `<button type="button" class="btn danger" data-act="cal-link-reset">Make a new link</button>`,
+  });
+}
+
 function wireCalendar() {
+  ACTIONS['cal-link'] = () => { openCalLink(false); };
+  ACTIONS['cal-link-reset'] = t => { if (t.dataset.armed !== '1') { t.dataset.armed = '1'; t.textContent = 'Click again: the old link stops working'; return; } openCalLink(true); };
   ACTIONS['cal-go'] = t => {
     const step = Number(t.dataset.step), f = V.cal;
     if (!step) { f.month = today().slice(0, 7); f.day = today(); }

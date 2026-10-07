@@ -56,6 +56,7 @@
     if (name === 'link_me') res = await sql('select public.link_me() as r');
     else if (name === 'is_member') res = await sql('select public.is_member() as r');
     else if (name === 'set_my_profile') res = await sql('select public.set_my_profile($1, $2) as r', [args.p_name, args.p_signature]);
+    else if (name === 'my_calendar_token') res = await sql('select public.my_calendar_token($1) as r', [!!(args && args.p_reset)]);
     else return { data: null, error: { code: 'PGRST202', message: 'no function ' + name } };
     return res.error ? { data: null, error: res.error } : { data: res.rows[0].r, error: null };
   }

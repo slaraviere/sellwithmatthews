@@ -516,6 +516,52 @@ await page5.click('[data-act="lead-dismiss"]');
 await page5.waitForFunction(() => document.querySelector('#lead-badge').hidden);
 check('CRM: a dismissed lead leaves the inbox and is kept in the database', (await one(`select status from web_leads where name = 'Direct Test'`)).status === 'dismissed' && await st(page5, `newLeads().length`) === 0);
 
+// --- calendar link for Google Calendar: who can get one, what it shows, and the feed itself
+await admin(`insert into tasks (id, name, company_id, assigned_to_id, due_date, due_time, task_type, appointment_kind, location, notes, status) values
+  ('ap-mine', 'Site visit with Turner Equipment Sales', $1, $2, current_date + 2, '09:30', 'Appointment', 'Site visit', '12 Yard Rd; Galax, VA', 'Bring the checklist', 'Open'),
+  ('ap-other', 'Phone call with Nora Fields', null, null, current_date + 3, '14:00', 'Appointment', 'Phone call', '', '', 'Open'),
+  ('ap-old', 'Old visit', null, $2, current_date - 90, '10:00', 'Appointment', 'Site visit', '', '', 'Completed'),
+  ('ap-cancel', 'Cancelled visit', null, $2, current_date + 1, '10:00', 'Appointment', 'Site visit', '', '', 'Cancelled')`, [added.id, tid]);
+const feedOf = async (token, who) => { const r = await anonSql(`select public.calendar_feed($1, $2) as r`, [token, who || 'mine']); return r.error ? r : r.rows[0].r; };
+check('calendar link: a made-up link shows nothing', await feedOf('0123456789abcdef0123456789abcdef') === null && await feedOf('') === null);
+check('calendar link: visitors cannot read the links or make one', !!(await anonSql(`select * from calendar_links`)).error && !!(await anonSql(`select public.my_calendar_token(false)`)).error);
+check('calendar link: team members cannot read each other\'s links directly', !!(await runAs(A)(`select * from calendar_links`)).error);
+const tok1 = (await runAs(A)(`select public.my_calendar_token(false) as t`)).rows[0].t;
+check('calendar link: a member gets one long private link and keeps it', /^[a-f0-9]{64}$/.test(tok1) && (await runAs(A)(`select public.my_calendar_token(false) as t`)).rows[0].t === tok1);
+check('calendar link: someone who is not on the team cannot get one', !!(await runAs(C)(`select public.my_calendar_token(false) as t`)).error);
+const mineIds = (await feedOf(tok1)).map(e => e.id), allIds = (await feedOf(tok1, 'all')).map(e => e.id);
+check('calendar link: "mine" shows only that person\'s upcoming appointments', mineIds.includes('ap-mine') && !mineIds.includes('ap-other') && !mineIds.includes('ap-old') && !mineIds.includes('ap-cancel'), mineIds);
+check('calendar link: "everyone" adds the rest of the team, still no cancelled or old ones', allIds.includes('ap-mine') && allIds.includes('ap-other') && !allIds.includes('ap-old') && !allIds.includes('ap-cancel'), allIds);
+check('calendar link: only appointments are in it, not other tasks', (await feedOf(tok1, 'all')).every(e => String(e.id).startsWith('ap-')) && (await one(`select count(*)::int n from tasks where task_type <> 'Appointment'`)).n > 0);
+
+process.env.SUPABASE_URL = 'https://example.supabase.co'; process.env.SUPABASE_ANON_KEY = 'test-anon-key';
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, opts) => {
+  if (!String(url).startsWith('https://example.supabase.co/rest/v1/rpc/calendar_feed')) throw new Error('unexpected fetch ' + url);
+  const b = JSON.parse(opts.body), r = await anonSql(`select public.calendar_feed($1, $2) as r`, [b.p_token, b.p_who]);
+  return new Response(JSON.stringify(r.error ? { message: r.error.message } : r.rows[0].r), { status: r.error ? 400 : 200, headers: { 'Content-Type': 'application/json' } });
+};
+const calendarApi = (await import('../api/calendar.js')).default;
+const callApi = async query => { const out = { headers: {}, code: 0, body: '' }; const res = { setHeader: (k, v) => { out.headers[k.toLowerCase()] = v; }, status: c => { out.code = c; return res; }, send: b => { out.body = String(b); return res; } }; await calendarApi({ method: 'GET', query, headers: {} }, res); return out; };
+const ics = await callApi({ token: tok1 });
+const day2 = (await one(`select to_char(current_date + 2, 'YYYYMMDD') d`)).d;
+check('calendar feed: a real calendar file with the appointment at its local time', ics.code === 200 && /^text\/calendar/.test(ics.headers['content-type']) && ics.body.startsWith('BEGIN:VCALENDAR\r\n') && ics.body.trimEnd().endsWith('END:VCALENDAR') && ics.body.includes(`DTSTART;TZID=America/New_York:${day2}T093000`) && ics.body.includes(`DTEND;TZID=America/New_York:${day2}T103000`) && ics.body.includes('SUMMARY:Site visit with Turner Equipment Sales'), ics.body.slice(0, 200));
+check('calendar feed: place and notes carried, punctuation kept safe, long lines folded', ics.body.includes('LOCATION:12 Yard Rd' + String.fromCharCode(92) + '; Galax' + String.fromCharCode(92) + ', VA') && ics.body.includes('Bring the checklist') && ics.body.split('\r\n').every(l => Buffer.byteLength(l, 'utf8') <= 75) && !ics.body.includes('Nora Fields'));
+check('calendar feed: the team link includes the others, with a half-hour for a phone call', (await callApi({ token: tok1, who: 'all' })).body.includes('SUMMARY:Phone call with Nora Fields') && (await callApi({ token: tok1, who: 'all' })).body.includes('T143000'));
+check('calendar feed: a wrong or malformed link gets nothing', (await callApi({ token: 'f'.repeat(64) })).code === 404 && (await callApi({ token: "x' or 1=1" })).code === 404 && (await callApi({})).code === 404);
+
+await page5.click('#tabs [data-tab="calendar"]');
+await page5.click('[data-act="cal-link"]');
+await page5.waitForSelector('#cal-url-mine');
+check('CRM: the Calendar screen hands out the two links with steps', await page5.inputValue('#cal-url-mine') === 'https://crm.test/api/calendar?token=' + tok1 && await page5.inputValue('#cal-url-all') === 'https://crm.test/api/calendar?token=' + tok1 + '&who=all' && (await page5.textContent('#dlg')).includes('From URL'));
+await page5.screenshot({ path: path.join(OUT, 'web-calendar-link.png') });
+await page5.click('[data-act="cal-link-reset"]');
+await page5.click('[data-act="cal-link-reset"]');
+await page5.waitForSelector('#cal-reset-ok');
+const tok2 = (await runAs(A)(`select public.my_calendar_token(false) as t`)).rows[0].t;
+check('calendar link: making a new one stops the old link', tok2 !== tok1 && await page5.inputValue('#cal-url-mine') === 'https://crm.test/api/calendar?token=' + tok2 && await feedOf(tok1) === null && (await callApi({ token: tok1 })).code === 404 && (await callApi({ token: tok2 })).code === 200);
+globalThis.fetch = realFetch;
+
 const expected = errors.filter(e => /^console: \{code: (not_configured|denied)/.test(e));
 const real = errors.filter(e => !expected.includes(e));
 console.log('\nERRORS:', real.length ? '\n' + real.join('\n') : 'none');
