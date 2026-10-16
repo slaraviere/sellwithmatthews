@@ -67,3 +67,9 @@ for (const f of existsSync(new URL('./public/', import.meta.url)) ? readdirSync(
 for (const [file, html] of Object.entries(buildSite({ config, photos, heroPhotos, all: !!env.SITE_ALL }))) out('./public/' + file, html);
 for (const f of ['site.css', 'site.js']) cpSync(new URL('./site/' + f, import.meta.url), new URL('./public/' + f, import.meta.url));
 for (const d of ['fonts', 'img']) cpSync(new URL('./site/' + d + '/', import.meta.url), new URL('./public/' + d + '/', import.meta.url), { recursive: true });
+
+// --- Auction social graphics. Collages for weekly auction posts live in social/<auction>/ and are
+// served at /crm/social/<auction>/<file> so Genie Rocket and Instagram can fetch them by URL.
+// Nothing links to them; vercel.json marks the folder noindex.
+const socialDir = new URL('./social/', import.meta.url);
+if (existsSync(socialDir)) cpSync(socialDir, new URL('./public/crm/social/', import.meta.url), { recursive: true, filter: src => !/\.md$/i.test(src) });
