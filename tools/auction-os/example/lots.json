@@ -1,0 +1,26 @@
+{
+ "auction": "Galax VA - November 6, 2026",
+ "auction_url": "https://www.matthewsauctioneers.com/auctions/29948-galax-va-november-6-2026",
+ "closes": "2026-11-06 19:00",
+ "lot_count": 1274,
+ "lots": {
+  "D-43-G": {
+   "title": "Craftsman V20 4-Tool Combo Kit",
+   "cond": "Used - Tested",
+   "href": "/auctions/29948/lot/577710",
+   "img": "https://d3j17a2r8lnfte.cloudfront.net/mat/2026/11/large/37sN8O6Gli_oHa8jEpjMjSCN.jpeg"
+  },
+  "C-28-G": {
+   "title": "Frigidaire Gallery 6.5 cu ft Upright Freezer",
+   "cond": "Open Box",
+   "href": "/auctions/29948/lot/577687",
+   "img": "https://d3j17a2r8lnfte.cloudfront.net/mat/2026/10/large/bqBRy6d1unU7NRSJWLaUu7ZP.jpeg"
+  },
+  "C-33-G": {
+   "title": "12 in. Double Bevel Sliding Compound Miter Saw",
+   "cond": "Used - Tested",
+   "href": "/auctions/29948/lot/577683",
+   "img": "https://d3j17a2r8lnfte.cloudfront.net/mat/2026/11/large/qTAg05_qsDI7Wi-9wcU0M_uB.jpeg"
+  }
+ }
+}
