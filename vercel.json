@@ -44,15 +44,6 @@
           "value": "https://app.genierocket.com"
         }
       ]
-    },
-    {
-      "source": "/crm/social/xfer/(.*)",
-      "headers": [
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "https://www.matthewsauctioneers.com"
-        }
-      ]
     }
   ]
 }
